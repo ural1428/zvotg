@@ -1,0 +1,17 @@
+venv/
+__pycache__/
+*.pyc
+
+.env
+
+storage/certs/
+storage/temp/
+
+.idea/
+.vscode/
+
+*.log
+
+alembic.ini.bak
+
+.DS_Store
