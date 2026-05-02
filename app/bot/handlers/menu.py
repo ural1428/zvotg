@@ -87,6 +87,11 @@ async def build_subscriptions_text(telegram_id: int) -> str:
 
     lines = ["📦 Мои подписки\n"]
 
+    subscriptions = [
+        sub for sub in subscriptions
+        if sub.status in ("paid", "sent", "expired")
+    ]
+
     for index, subscription in enumerate(subscriptions, start=1):
         is_active = is_subscription_active(subscription)
         days_left = get_subscription_days_left(subscription)
@@ -271,7 +276,7 @@ async def select_tariff(callback: CallbackQuery):
 
             await callback.message.edit_text(
                 "⏳ Заказ создан.\n\n"
-                "Создаю VPN-сертификат в фоновом режиме..."
+                "Начинаем готовить сертификат..."
             )
 
             manager = MikroTikManager(config.mikrotik)
@@ -465,5 +470,40 @@ async def pay_order(callback: CallbackQuery):
         f"Заказ #{order_id}\n\n"
         "Здесь позже будет подключение платёжной системы.",
         reply_markup=back_to_main_keyboard,
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "instruction:android")
+async def instruction_android(callback: CallbackQuery):
+    await callback.message.answer(
+        "🤖 Инструкция для Android\n\n"
+        "Здесь будет инструкция по установке IKEv2-сертификата."
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "instruction:ios")
+async def instruction_ios(callback: CallbackQuery):
+    await callback.message.answer(
+        "🍎 Инструкция для Apple iOS\n\n"
+        "Здесь будет инструкция по установке IKEv2-сертификата."
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "instruction:windows")
+async def instruction_windows(callback: CallbackQuery):
+    await callback.message.answer(
+        "🪟 Инструкция для Windows\n\n"
+        "Здесь будет инструкция по установке IKEv2-сертификата."
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "instruction:macos")
+async def instruction_macos(callback: CallbackQuery):
+    await callback.message.answer(
+        "💻 Инструкция для Apple MacOS\n\n"
+        "Здесь будет инструкция по установке IKEv2-сертификата."
     )
     await callback.answer()
