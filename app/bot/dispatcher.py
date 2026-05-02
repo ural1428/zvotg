@@ -7,6 +7,7 @@ from app.bot.handlers import (
     vpn,
     profile,
     menu,
+    instructions,
 )
 
 
@@ -29,5 +30,7 @@ def setup_dispatcher():
     dp.include_router(
         menu.router,
     )
+
+    dp.include_router(instructions.router)
 
     return dp

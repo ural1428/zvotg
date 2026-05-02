@@ -11,6 +11,12 @@ profile_keyboard = InlineKeyboardMarkup(
         ],
         [
             InlineKeyboardButton(
+                text="⚙ Управление VPN",
+                callback_data="menu:support",
+            )
+        ],
+        [
+            InlineKeyboardButton(
                 text="⬅ Назад",
                 callback_data="menu:main",
             )
