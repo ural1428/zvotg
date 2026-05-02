@@ -13,8 +13,9 @@ from app.services.subscription_service import get_subscription_by_cer_id
 
 router = Router()
 
-ANDROID_APK_PATH = "/storage/apk/strongswan.apk"
+ANDROID_APK_PATH = "/storage/apk/strongSwan-2.6.2.apk"
 IOS_CA_CERT_PATH = "storage/certs/cert_export_ca.zvotg.ru.crt"
+ANDROID_VIDEO_PATH = "storage/video/strongswan_small.mp4"
 
 def android_setup_keyboard(cer_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -29,6 +30,12 @@ def android_setup_keyboard(cer_id: str) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text="⚡ Загрузить профиль",
                     callback_data=f"android:download_profile:{cer_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🎥 Видео-инструкция",
+                    callback_data="android:video",
                 )
             ],
             [
@@ -79,6 +86,24 @@ async def safe_edit(callback: CallbackQuery, text: str, reply_markup=None):
             parse_mode="Markdown",
             disable_web_page_preview=True,
         )
+
+@router.callback_query(F.data == "android:video")
+async def send_android_video(callback: CallbackQuery):
+    video_file = Path(ANDROID_VIDEO_PATH)
+
+    if not video_file.exists():
+        await callback.answer(
+            f"Видео не найдено: {ANDROID_VIDEO_PATH}",
+            show_alert=True,
+        )
+        return
+
+    await callback.message.answer_video(
+        video=FSInputFile(str(video_file)),
+        caption="🎥 Видео-инструкция по быстрой установке VPN на Android",
+    )
+
+    await callback.answer("Видео отправлено.")
 
 @router.callback_query(F.data.startswith("ios_setup:"))
 async def ios_setup(callback: CallbackQuery):
