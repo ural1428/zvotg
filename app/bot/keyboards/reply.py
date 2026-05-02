@@ -1,20 +1,13 @@
-from aiogram.types import (
-    ReplyKeyboardMarkup,
-    KeyboardButton,
-)
-
+from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [
-            KeyboardButton(
-                text="Создать VPN",
-            ),
+            KeyboardButton(text="👤 Профиль"),
         ],
         [
-            KeyboardButton(
-                text="Мои сертификаты",
-            ),
+            KeyboardButton(text="💳 КупитПодписку"),
+            KeyboardButton(text="📦 Мои подписки"),
         ],
     ],
     resize_keyboard=True,
