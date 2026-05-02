@@ -54,7 +54,6 @@ async def generate_next_cer_id(
     telegram_id: int,
 ) -> str:
     subscriptions = await get_user_subscriptions(session, telegram_id)
-
     used_cer_ids = {sub.cer_id for sub in subscriptions}
 
     possible_cer_ids = [
@@ -83,7 +82,6 @@ async def create_new_pending_subscription(
         raise ValueError("Maximum subscriptions limit reached")
 
     cer_id = await generate_next_cer_id(session, telegram_id)
-
     now = datetime.now(MSK)
 
     subscription = VPNSubscription(
@@ -229,9 +227,7 @@ def get_subscription_days_left(subscription: VPNSubscription | None) -> int:
     now = datetime.now(MSK)
     expires_at = subscription.expires_at.astimezone(MSK)
 
-    days_left = (expires_at.date() - now.date()).days
-
-    return max(days_left, 0)
+    return max((expires_at.date() - now.date()).days, 0)
 
 
 def is_subscription_active(subscription: VPNSubscription | None) -> bool:

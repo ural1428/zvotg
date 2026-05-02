@@ -5,11 +5,14 @@ from app.bot.keyboards.back_menu import back_to_main_keyboard
 from app.bot.keyboards.main_menu import main_menu_keyboard
 from app.bot.keyboards.profile_menu import profile_keyboard, subscriptions_keyboard
 from app.bot.keyboards.tariffs_menu import tariffs_keyboard
+from app.bot.keyboards.subscriptions_menu import select_subscription_keyboard
+from app.services.subscription_service import get_subscription_by_cer_id
 from app.config import config
 from app.database.session import AsyncSessionLocal
 from app.integrations.mikrotik.manager import MikroTikManager
 from app.services.order_service import create_order, get_order_by_id, mark_order_paid
 from app.services.subscription_service import (
+    get_user_subscriptions,
     get_latest_subscription,
     get_subscription_days_left,
     is_subscription_active,
@@ -17,6 +20,7 @@ from app.services.subscription_service import (
     mark_cert_created,
     activate_or_extend_subscription,
     send_certificate,
+    get_subscription_by_cer_id,
 )
 from app.services.tariffs import TARIFFS
 
@@ -32,13 +36,13 @@ WELCOME_TEXT = (
 )
 
 
-def test_payment_keyboard(order_id: int) -> InlineKeyboardMarkup:
+def test_payment_keyboard(order_id: int, action: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="✅ Имитировать оплату",
-                    callback_data=f"order:test_paid:{order_id}",
+                    callback_data=f"order:test_paid:{action}:{order_id}",
                 )
             ],
             [
@@ -53,36 +57,50 @@ def test_payment_keyboard(order_id: int) -> InlineKeyboardMarkup:
 
 async def build_profile_text(telegram_id: int) -> str:
     async with AsyncSessionLocal() as session:
-        subscription = await get_latest_subscription(session, telegram_id)
+        subscriptions = await get_user_subscriptions(session, telegram_id)
 
-    is_active = is_subscription_active(subscription)
-    days_left = get_subscription_days_left(subscription)
+    active_count = 0
+    max_days_left = 0
+
+    for subscription in subscriptions:
+        if is_subscription_active(subscription):
+            active_count += 1
+            max_days_left = max(
+                max_days_left,
+                get_subscription_days_left(subscription),
+            )
 
     return (
         "👤 Профиль\n\n"
         f"Telegram ID: `{telegram_id}`\n"
-        f"Подписка: {'✅ Активна' if is_active else '❌ Не активна'}\n"
-        f"Осталось: {days_left if is_active else 0} дн."
+        f"Активных подписок: {active_count}\n"
+        f"Всего подписок: {len(subscriptions)} / 5\n"
+        f"Максимально осталось: {max_days_left} дн."
     )
 
 
 async def build_subscriptions_text(telegram_id: int) -> str:
     async with AsyncSessionLocal() as session:
-        subscription = await get_latest_subscription(session, telegram_id)
+        subscriptions = await get_user_subscriptions(session, telegram_id)
 
-    if not subscription:
+    if not subscriptions:
         return "📦 Мои подписки\n\nУ вас пока нет подписок."
 
-    is_active = is_subscription_active(subscription)
-    days_left = get_subscription_days_left(subscription)
+    lines = ["📦 Мои подписки\n"]
 
-    return (
-        "📦 Мои подписки\n\n"
-        "🔐 IKEv2 VPN\n\n"
-        f"Статус: {'✅ Активна' if is_active else '❌ Не активна'}\n"
-        f"Осталось: {days_left} дн.\n"
-        f"Сертификат: {'✅ Создан' if subscription.cert_path else '❌ Не создан'}"
-    )
+    for index, subscription in enumerate(subscriptions, start=1):
+        is_active = is_subscription_active(subscription)
+        days_left = get_subscription_days_left(subscription)
+
+        lines.append(
+            f"\n🔐 IKEv2 VPN #{index}\n"
+            f"ID сертификата: `{subscription.cer_id}`\n"
+            f"Статус: {'✅ Активна' if is_active else '❌ Не активна'}\n"
+            f"Осталось: {days_left} дн.\n"
+            f"Сертификат: {'✅ Создан' if subscription.cert_path else '❌ Не создан'}"
+        )
+
+    return "\n".join(lines)
 
 
 @router.callback_query(F.data == "menu:main")
@@ -113,6 +131,7 @@ async def profile_subscriptions(callback: CallbackQuery):
     await callback.message.edit_text(
         text,
         reply_markup=subscriptions_keyboard,
+        parse_mode="Markdown",
     )
     await callback.answer()
 
@@ -121,7 +140,10 @@ async def profile_subscriptions(callback: CallbackQuery):
 async def menu_buy(callback: CallbackQuery):
     await callback.message.edit_text(
         "💳 Покупка подписки\n\nВыберите тариф:",
-        reply_markup=tariffs_keyboard(back_callback="menu:main"),
+        reply_markup=tariffs_keyboard(
+            action="buy",
+            back_callback="menu:main",
+        ),
     )
     await callback.answer()
 
@@ -130,7 +152,10 @@ async def menu_buy(callback: CallbackQuery):
 async def menu_tariffs(callback: CallbackQuery):
     await callback.message.edit_text(
         "📋 Доступные тарифы\n\nВыберите тариф для оформления заказа:",
-        reply_markup=tariffs_keyboard(back_callback="menu:main"),
+        reply_markup=tariffs_keyboard(
+            action="buy",
+            back_callback="menu:main",
+        ),
     )
     await callback.answer()
 
@@ -139,16 +164,49 @@ async def menu_tariffs(callback: CallbackQuery):
 async def renew_subscription(callback: CallbackQuery):
     await callback.message.edit_text(
         "🔄 Продление подписки\n\nВыберите тариф:",
-        reply_markup=tariffs_keyboard(back_callback="profile:subscriptions"),
+        reply_markup=tariffs_keyboard(
+            action="renew",
+            back_callback="profile:subscriptions",
+        ),
     )
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("tariff:select:"))
+@router.callback_query(F.data.startswith("tariff:"))
 async def select_tariff(callback: CallbackQuery):
-    tariff_code = callback.data.split(":")[-1]
+    _, action, tariff_code = callback.data.split(":")
 
     async with AsyncSessionLocal() as session:
+        if action == "buy":
+            subscriptions = await get_user_subscriptions(
+                session=session,
+                telegram_id=callback.from_user.id,
+            )
+
+            if len(subscriptions) >= 5:
+                await callback.answer(
+                    "У вас уже максимальное количество подписок: 5.",
+                    show_alert=True,
+                )
+                return
+
+        elif action == "renew":
+            subscription = await get_latest_subscription(
+                session=session,
+                telegram_id=callback.from_user.id,
+            )
+
+            if not subscription:
+                await callback.answer(
+                    "У вас нет подписки для продления.",
+                    show_alert=True,
+                )
+                return
+
+        else:
+            await callback.answer("Неизвестное действие.", show_alert=True)
+            return
+
         order = await create_order(
             session=session,
             telegram_id=callback.from_user.id,
@@ -164,14 +222,15 @@ async def select_tariff(callback: CallbackQuery):
         f"Срок: {order.days} дн.\n"
         f"Сумма: {order.amount} ₽\n\n"
         "Для теста нажмите кнопку ниже.",
-        reply_markup=test_payment_keyboard(order.id),
+        reply_markup=test_payment_keyboard(order.id, action),
     )
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("order:test_paid:"))
 async def test_paid_order(callback: CallbackQuery):
-    order_id = int(callback.data.split(":")[-1])
+    _, _, action, order_id_raw = callback.data.split(":")
+    order_id = int(order_id_raw)
     telegram_id = callback.from_user.id
 
     async with AsyncSessionLocal() as session:
@@ -185,21 +244,20 @@ async def test_paid_order(callback: CallbackQuery):
             await callback.answer("Заказ уже оплачен", show_alert=True)
             return
 
-        subscription = await get_latest_subscription(
-            session=session,
-            telegram_id=telegram_id,
-        )
+        if action == "buy":
+            try:
+                subscription = await create_new_pending_subscription(
+                    session=session,
+                    user_id=order.user_id,
+                    telegram_id=telegram_id,
+                )
+            except ValueError:
+                await callback.answer(
+                    "У вас уже максимальное количество подписок: 5.",
+                    show_alert=True,
+                )
+                return
 
-        if not subscription:
-            subscription = await create_pending_subscription(
-                session=session,
-                user_id=order.user_id,
-                telegram_id=telegram_id,
-                cer_id=telegram_id,
-                cert_path=None,
-            )
-
-        if not subscription.cert_path:
             manager = MikroTikManager(config.mikrotik)
 
             await callback.message.edit_text(
@@ -211,15 +269,32 @@ async def test_paid_order(callback: CallbackQuery):
 
             subscription = await mark_cert_created(
                 session=session,
-                cer_id=telegram_id,
+                cer_id=subscription.cer_id,
                 cert_path=cert_path,
             )
+
+        elif action == "renew":
+            subscription = await get_latest_subscription(
+                session=session,
+                telegram_id=telegram_id,
+            )
+
+            if not subscription:
+                await callback.answer(
+                    "Подписка для продления не найдена.",
+                    show_alert=True,
+                )
+                return
+
+        else:
+            await callback.answer("Неизвестное действие.", show_alert=True)
+            return
 
         order = await mark_order_paid(session, order_id)
 
         subscription = await activate_or_extend_subscription(
             session=session,
-            cer_id=telegram_id,
+            cer_id=subscription.cer_id,
             tariff_code=order.tariff_code,
         )
 
@@ -230,16 +305,22 @@ async def test_paid_order(callback: CallbackQuery):
             force=False,
         )
 
-    if was_sent:
+    if action == "buy" and was_sent:
         text = (
             "✅ Оплата имитирована\n\n"
             "Подписка активирована.\n"
             "Сертификат отправлен вам файлом."
         )
-    else:
+    elif action == "renew":
         text = (
             "✅ Оплата имитирована\n\n"
             "Подписка продлена.\n"
+            "Ваш сертификат остаётся прежним."
+        )
+    else:
+        text = (
+            "✅ Оплата имитирована\n\n"
+            "Подписка активирована.\n"
             "Ваш сертификат остаётся прежним."
         )
 
@@ -259,7 +340,10 @@ async def download_cert(callback: CallbackQuery):
         )
 
         if not subscription or not is_subscription_active(subscription):
-            await callback.answer("У вас нет активной подписки.", show_alert=True)
+            await callback.answer(
+                "У вас нет активной подписки.",
+                show_alert=True,
+            )
             return
 
         try:
@@ -270,7 +354,10 @@ async def download_cert(callback: CallbackQuery):
                 force=True,
             )
         except FileNotFoundError:
-            await callback.answer("Файл сертификата не найден.", show_alert=True)
+            await callback.answer(
+                "Файл сертификата не найден.",
+                show_alert=True,
+            )
             return
 
     await callback.answer("Сертификат отправлен.", show_alert=True)
