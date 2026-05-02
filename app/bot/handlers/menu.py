@@ -5,7 +5,10 @@ from sqlalchemy import select
 from app.bot.keyboards.back_menu import back_to_main_keyboard
 from app.bot.keyboards.main_menu import main_menu_keyboard
 from app.bot.keyboards.profile_menu import profile_keyboard, subscriptions_keyboard
-from app.bot.keyboards.subscriptions_menu import select_subscription_keyboard
+from app.bot.keyboards.subscriptions_menu import (
+    select_subscription_keyboard,
+    select_subscription_for_download_keyboard,
+)
 from app.bot.keyboards.tariffs_menu import tariffs_keyboard
 from app.config import config
 from app.database.models import User
@@ -453,20 +456,70 @@ async def test_paid_order(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "subscription:download_cert")
-async def download_cert(callback: CallbackQuery):
+async def download_cert_menu(callback: CallbackQuery):
     async with AsyncSessionLocal() as session:
-        subscription = await get_latest_subscription(
+        subscriptions = await get_user_subscriptions(
             session=session,
             telegram_id=callback.from_user.id,
         )
 
+        subscriptions = [
+            sub for sub in subscriptions
+            if sub.status in ("paid", "sent") and is_subscription_active(sub)
+        ]
+
+        if not subscriptions:
+            await callback.answer(
+                "У вас нет активных подписок.",
+                show_alert=True,
+            )
+            return
+
+        if len(subscriptions) == 1:
+            subscription = subscriptions[0]
+
+            try:
+                await send_certificate(
+                    bot=callback.bot,
+                    session=session,
+                    subscription=subscription,
+                    force=True,
+                )
+            except FileNotFoundError:
+                await callback.answer(
+                    "Файл сертификата не найден на сервере.",
+                    show_alert=True,
+                )
+                return
+
+            await callback.answer("Сертификат отправлен.", show_alert=True)
+            return
+
+    await callback.message.edit_text(
+        "📄 Скачать сертификат\n\n"
+        "Выберите подписку:",
+        reply_markup=select_subscription_for_download_keyboard(subscriptions),
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("download_cert:"))
+async def download_selected_cert(callback: CallbackQuery):
+    cer_id = callback.data.split(":", 1)[1]
+
+    async with AsyncSessionLocal() as session:
+        subscription = await get_subscription_by_cer_id(
+            session=session,
+            cer_id=cer_id,
+        )
+
         if (
             not subscription
+            or subscription.telegram_id != callback.from_user.id
+            or subscription.status not in ("paid", "sent")
             or not is_subscription_active(subscription)
-            or subscription.status not in VISIBLE_SUBSCRIPTION_STATUSES
         ):
             await callback.answer(
-                "У вас нет активной подписки.",
+                "Подписка не найдена или не активна.",
                 show_alert=True,
             )
             return
@@ -480,13 +533,12 @@ async def download_cert(callback: CallbackQuery):
             )
         except FileNotFoundError:
             await callback.answer(
-                "Файл сертификата не найден.",
+                "Файл сертификата не найден на сервере.",
                 show_alert=True,
             )
             return
 
     await callback.answer("Сертификат отправлен.", show_alert=True)
-
 
 @router.callback_query(F.data.startswith("order:pay:"))
 async def pay_order(callback: CallbackQuery):
@@ -500,41 +552,6 @@ async def pay_order(callback: CallbackQuery):
     )
     await callback.answer()
 
-
-@router.callback_query(F.data == "instruction:android")
-async def instruction_android(callback: CallbackQuery):
-    await callback.message.answer(
-        "🤖 Инструкция для Android\n\n"
-        "Здесь будет инструкция по установке IKEv2-сертификата."
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data == "instruction:ios")
-async def instruction_ios(callback: CallbackQuery):
-    await callback.message.answer(
-        "🍎 Инструкция для Apple iOS\n\n"
-        "Здесь будет инструкция по установке IKEv2-сертификата."
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data == "instruction:windows")
-async def instruction_windows(callback: CallbackQuery):
-    await callback.message.answer(
-        "🪟 Инструкция для Windows\n\n"
-        "Здесь будет инструкция по установке IKEv2-сертификата."
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data == "instruction:macos")
-async def instruction_macos(callback: CallbackQuery):
-    await callback.message.answer(
-        "💻 Инструкция для Apple MacOS\n\n"
-        "Здесь будет инструкция по установке IKEv2-сертификата."
-    )
-    await callback.answer()
 
 support_keyboard = InlineKeyboardMarkup(
     inline_keyboard=[

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import VPNSubscription
 from app.services.tariffs import TARIFFS
-
+from app.services.strongswan_profile_service import create_strongswan_profile
 
 MSK = ZoneInfo("Europe/Moscow")
 MAX_SUBSCRIPTIONS_PER_USER = 5
@@ -250,6 +250,26 @@ async def send_certificate(
         ),
         reply_markup=instruction_keyboard,
     )
+
+    try:
+        sswan_path = create_strongswan_profile(
+            cer_id=subscription.cer_id,
+            p12_path=subscription.cert_path,
+        )
+
+        await bot.send_document(
+            chat_id=subscription.telegram_id,
+            document=FSInputFile(sswan_path),
+            caption=(
+                " Android профиль strongSwan\n\n"
+                "1. Установите strongSwan VPN Client.\n"
+                "2. Откройте этот `.sswan` файл на Android.\n"
+                "3. Импортируйте профиль.\n"
+                "4. Нажмите Connect."
+            ),
+        )
+    except Exception:
+        pass
 
     if subscription.cert_sent_at is None:
         subscription.cert_sent_at = datetime.now(MSK)

@@ -31,6 +31,8 @@ def setup_dispatcher():
         menu.router,
     )
 
-    dp.include_router(instructions.router)
+    dp.include_router(
+        instructions.router,
+    )
 
     return dp

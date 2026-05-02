@@ -25,7 +25,9 @@ class Config:
     bot_token: str
     db: DatabaseConfig
     mikrotik: MikroTikConfig
-
+    vpn_server_host: str
+    vpn_profile_name: str
+    cert_password: str
 config = Config(
     bot_token=os.getenv("BOT_TOKEN"),
     db=DatabaseConfig(
@@ -40,5 +42,8 @@ config = Config(
         user=os.getenv("MIKROTIK_USER"),
         port=int(os.getenv("MIKROTIK_PORT")),
         ssh_key=os.getenv("MIKROTIK_SSH_KEY"),
-    )
+    ),
+    vpn_server_host=os.getenv("VPN_SERVER_HOST"),
+    vpn_profile_name=os.getenv("VPN_PROFILE_NAME", "ZVO VPN"),
+    cert_password=os.getenv("CERT_PASSWORD", "123456789"),
 )
