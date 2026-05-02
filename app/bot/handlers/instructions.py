@@ -6,7 +6,7 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
 )
-
+from pathlib import Path
 from app.database.session import AsyncSessionLocal
 from app.services.strongswan_profile_service import create_strongswan_profile
 from app.services.subscription_service import get_subscription_by_cer_id
@@ -14,7 +14,7 @@ from app.services.subscription_service import get_subscription_by_cer_id
 router = Router()
 
 ANDROID_APK_PATH = "/storage/apk/strongswan.apk"
-IOS_CA_CERT_PATH = "/storage/cert/ca.crt"
+IOS_CA_CERT_PATH = "storage/certs/cert_export_ca.zvotg.ru.crt"
 
 def android_setup_keyboard(cer_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -103,8 +103,8 @@ async def ios_setup(callback: CallbackQuery):
         "*Шаг 3. Добавьте VPN*\n"
         "1. Перейдите: *Настройки → VPN → Добавить конфигурацию VPN*.\n"
         "2. Тип: *IKEv2*.\n"
-        "3. Сервер: адрес VPN-сервера.\n"
-        "4. Удалённый ID: адрес VPN-сервера.\n"
+        "3. Сервер: *zvotg.ru*.\n"
+        "4. Удалённый ID: *zvotg.ru*.\n"
         "5. Аутентификация пользователя: *Сертификат*.\n"
         "6. Выберите установленный клиентский сертификат.\n"
         "7. Сохраните и включите VPN.",
@@ -134,17 +134,21 @@ async def android_setup(callback: CallbackQuery):
 
 @router.callback_query(F.data == "ios:download_ca")
 async def download_ios_ca(callback: CallbackQuery):
-    try:
-        await callback.message.answer_document(
-            document=FSInputFile(IOS_CA_CERT_PATH),
-            caption="📄 CA-сертификат для Apple iOS",
-        )
-        await callback.answer("CA-сертификат отправлен.")
-    except FileNotFoundError:
+    ca_file = Path(IOS_CA_CERT_PATH)
+
+    if not ca_file.exists():
         await callback.answer(
-            "CA-сертификат пока не загружен на сервер.",
+            f"CA-сертификат не найден: {IOS_CA_CERT_PATH}",
             show_alert=True,
         )
+        return
+
+    await callback.message.answer_document(
+        document=FSInputFile(str(ca_file)),
+        caption="📄 CA-сертификат для Apple iOS",
+    )
+
+    await callback.answer("CA-сертификат отправлен.")
 
 @router.callback_query(F.data == "android:download_apk")
 async def download_strongswan_apk(callback: CallbackQuery):
