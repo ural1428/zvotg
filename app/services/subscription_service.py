@@ -12,16 +12,29 @@ from app.services.tariffs import TARIFFS
 
 
 MSK = ZoneInfo("Europe/Moscow")
+MAX_SUBSCRIPTIONS_PER_USER = 5
 
 
 async def get_subscription_by_cer_id(
     session: AsyncSession,
-    cer_id: int,
+    cer_id: str,
 ) -> VPNSubscription | None:
     result = await session.execute(
         select(VPNSubscription).where(VPNSubscription.cer_id == cer_id)
     )
     return result.scalar_one_or_none()
+
+
+async def get_user_subscriptions(
+    session: AsyncSession,
+    telegram_id: int,
+) -> list[VPNSubscription]:
+    result = await session.execute(
+        select(VPNSubscription)
+        .where(VPNSubscription.telegram_id == telegram_id)
+        .order_by(VPNSubscription.id.asc())
+    )
+    return list(result.scalars().all())
 
 
 async def get_latest_subscription(
@@ -36,17 +49,40 @@ async def get_latest_subscription(
     return result.scalars().first()
 
 
-async def create_pending_subscription(
+async def generate_next_cer_id(
+    session: AsyncSession,
+    telegram_id: int,
+) -> str:
+    subscriptions = await get_user_subscriptions(session, telegram_id)
+
+    used_cer_ids = {sub.cer_id for sub in subscriptions}
+
+    possible_cer_ids = [
+        str(telegram_id),
+        f"{telegram_id}-1",
+        f"{telegram_id}-2",
+        f"{telegram_id}-3",
+        f"{telegram_id}-4",
+    ]
+
+    for cer_id in possible_cer_ids:
+        if cer_id not in used_cer_ids:
+            return cer_id
+
+    raise ValueError("Maximum subscriptions limit reached")
+
+
+async def create_new_pending_subscription(
     session: AsyncSession,
     user_id: int,
     telegram_id: int,
-    cer_id: int,
-    cert_path: str | None = None,
 ) -> VPNSubscription:
-    existing_subscription = await get_subscription_by_cer_id(session, cer_id)
+    subscriptions = await get_user_subscriptions(session, telegram_id)
 
-    if existing_subscription:
-        return existing_subscription
+    if len(subscriptions) >= MAX_SUBSCRIPTIONS_PER_USER:
+        raise ValueError("Maximum subscriptions limit reached")
+
+    cer_id = await generate_next_cer_id(session, telegram_id)
 
     now = datetime.now(MSK)
 
@@ -54,7 +90,7 @@ async def create_pending_subscription(
         user_id=user_id,
         telegram_id=telegram_id,
         cer_id=cer_id,
-        cert_path=cert_path,
+        cert_path=None,
         status="pending_payment",
         identity_enabled=False,
         cert_created_at=None,
@@ -70,7 +106,7 @@ async def create_pending_subscription(
 
 async def mark_cert_created(
     session: AsyncSession,
-    cer_id: int,
+    cer_id: str,
     cert_path: str,
 ) -> VPNSubscription | None:
     subscription = await get_subscription_by_cer_id(session, cer_id)
@@ -97,7 +133,7 @@ async def mark_cert_created(
 
 async def activate_or_extend_subscription(
     session: AsyncSession,
-    cer_id: int,
+    cer_id: str,
     tariff_code: str,
 ) -> VPNSubscription | None:
     subscription = await get_subscription_by_cer_id(session, cer_id)
@@ -133,7 +169,7 @@ async def activate_or_extend_subscription(
 
 async def mark_cert_sent(
     session: AsyncSession,
-    cer_id: int,
+    cer_id: str,
 ) -> VPNSubscription | None:
     subscription = await get_subscription_by_cer_id(session, cer_id)
 
@@ -153,7 +189,7 @@ async def mark_cert_sent(
 
 async def mark_subscription_error(
     session: AsyncSession,
-    cer_id: int,
+    cer_id: str,
 ) -> VPNSubscription | None:
     subscription = await get_subscription_by_cer_id(session, cer_id)
 
@@ -214,14 +250,6 @@ async def send_certificate(
     subscription: VPNSubscription,
     force: bool = False,
 ) -> bool:
-    """
-    force=False:
-        автоматически отправляем сертификат только один раз после первой оплаты.
-
-    force=True:
-        пользователь сам запросил повторную загрузку сертификата.
-    """
-
     if not force and subscription.cert_sent_at is not None:
         return False
 

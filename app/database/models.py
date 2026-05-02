@@ -35,8 +35,8 @@ class VPNSubscription(Base):
         index=True,
     )
 
-    cer_id: Mapped[int] = mapped_column(
-        BigInteger,
+    cer_id: Mapped[str] = mapped_column(
+        String(64),
         nullable=False,
         unique=True,
         index=True,
