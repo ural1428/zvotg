@@ -295,4 +295,30 @@ async def send_certificate(
     await session.commit()
     await session.refresh(subscription)
 
+async def send_p12_file(
+    bot: Bot,
+    subscription: VPNSubscription,
+) -> None:
+    if not is_subscription_active(subscription):
+        raise PermissionError("Subscription is not active")
+
+    if not subscription.cert_path:
+        raise FileNotFoundError("cert_path is empty")
+
+    cert_file = Path(subscription.cert_path)
+
+    if not cert_file.exists():
+        raise FileNotFoundError(f"Certificate file not found: {subscription.cert_path}")
+
+    await bot.send_document(
+        chat_id=subscription.telegram_id,
+        document=FSInputFile(cert_file),
+        caption=(
+            "🍎 Сертификат VPN\n\n"
+            "Файл `.p12` подходит для iOS, macOS и Windows.\n\n"
+            "Пароль сертификата: `123456789`"
+        ),
+        parse_mode="Markdown",
+    )
+
     return True

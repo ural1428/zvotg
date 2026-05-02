@@ -25,6 +25,7 @@ from app.services.subscription_service import (
     mark_cert_created,
     activate_or_extend_subscription,
     send_certificate,
+    send_p12_file,
 )
 from app.services.tariffs import TARIFFS
 
@@ -481,9 +482,7 @@ async def download_cert_menu(callback: CallbackQuery):
             try:
                 await send_certificate(
                     bot=callback.bot,
-                    session=session,
                     subscription=subscription,
-                    force=True,
                 )
             except FileNotFoundError:
                 await callback.answer(
@@ -525,11 +524,9 @@ async def download_selected_cert(callback: CallbackQuery):
             return
 
         try:
-            await send_certificate(
+            await send_p12_file(
                 bot=callback.bot,
-                session=session,
                 subscription=subscription,
-                force=True,
             )
         except FileNotFoundError:
             await callback.answer(
