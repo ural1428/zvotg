@@ -124,3 +124,16 @@ class Order(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    subscription_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+
+    action: Mapped[str] = mapped_column(
+        String(20),
+        default="buy",
+        nullable=False,
+    )
+
+    cer_id: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        index=True,
+    )

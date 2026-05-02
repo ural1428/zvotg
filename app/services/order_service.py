@@ -15,6 +15,9 @@ async def create_order(
     session: AsyncSession,
     telegram_id: int,
     tariff_code: str,
+    action: str,
+    subscription_id: int | None = None,
+    cer_id: str | None = None,
 ) -> Order:
     if tariff_code not in TARIFFS:
         raise ValueError(f"Unknown tariff_code: {tariff_code}")
@@ -36,6 +39,9 @@ async def create_order(
         days=tariff["days"],
         amount=tariff["amount"],
         status="created",
+        action=action,
+        subscription_id=subscription_id,
+        cer_id=cer_id,
     )
 
     session.add(order)

@@ -14,16 +14,17 @@ from app.services.order_service import create_order, get_order_by_id, mark_order
 from app.services.subscription_service import (
     get_user_subscriptions,
     get_latest_subscription,
+    get_subscription_by_cer_id,
     get_subscription_days_left,
     is_subscription_active,
     create_new_pending_subscription,
     mark_cert_created,
     activate_or_extend_subscription,
     send_certificate,
-    get_subscription_by_cer_id,
 )
 from app.services.tariffs import TARIFFS
-
+from sqlalchemy import select
+from app.database.models import User
 
 router = Router()
 
@@ -35,23 +36,13 @@ WELCOME_TEXT = (
     "Выберите действие:"
 )
 
-
-def test_payment_keyboard(
-    order_id: int,
-    action: str,
-    cer_id: str | None = None,
-) -> InlineKeyboardMarkup:
-    if cer_id:
-        callback_data = f"order:test_paid:{action}:{cer_id}:{order_id}"
-    else:
-        callback_data = f"order:test_paid:{action}:{order_id}"
-
+def test_payment_keyboard(order_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="✅ Имитировать оплату",
-                    callback_data=callback_data,
+                    callback_data=f"order:test_paid:{order_id}",
                 )
             ],
             [
@@ -225,7 +216,6 @@ async def select_subscription_for_renew(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("tariff:"))
 async def select_tariff(callback: CallbackQuery):
     parts = callback.data.split(":")
-
     action = parts[1]
 
     if action == "renew":
@@ -235,101 +225,56 @@ async def select_tariff(callback: CallbackQuery):
         cer_id = None
         tariff_code = parts[2]
 
+    telegram_id = callback.from_user.id
+
+    await callback.answer("Создаю заказ...")
+
     async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            await callback.message.edit_text(
+                "Пользователь не найден. Нажмите /start."
+            )
+            return
+
         if action == "buy":
             subscriptions = await get_user_subscriptions(
                 session=session,
-                telegram_id=callback.from_user.id,
+                telegram_id=telegram_id,
             )
 
             if len(subscriptions) >= 5:
-                await callback.answer(
+                await callback.message.edit_text(
                     "У вас уже максимальное количество подписок: 5.",
-                    show_alert=True,
+                    reply_markup=back_to_main_keyboard,
                 )
                 return
 
-        elif action == "renew":
-            subscription = await get_subscription_by_cer_id(
+            subscription = await create_new_pending_subscription(
                 session=session,
-                cer_id=cer_id,
+                user_id=user.id,
+                telegram_id=telegram_id,
             )
 
-            if not subscription or subscription.telegram_id != callback.from_user.id:
-                await callback.answer(
-                    "Подписка для продления не найдена.",
-                    show_alert=True,
-                )
-                return
-
-        else:
-            await callback.answer("Неизвестное действие.", show_alert=True)
-            return
-
-        order = await create_order(
-            session=session,
-            telegram_id=callback.from_user.id,
-            tariff_code=tariff_code,
-        )
-
-    tariff = TARIFFS[tariff_code]
-
-    await callback.message.edit_text(
-        "🧾 Заказ создан\n\n"
-        f"Номер заказа: #{order.id}\n"
-        f"Тариф: {tariff['title']}\n"
-        f"Срок: {order.days} дн.\n"
-        f"Сумма: {order.amount} ₽\n\n"
-        "Для теста нажмите кнопку ниже.",
-        reply_markup=test_payment_keyboard(order.id, action, cer_id),
-    )
-    await callback.answer()
-
-@router.callback_query(F.data.startswith("order:test_paid:"))
-async def test_paid_order(callback: CallbackQuery):
-    parts = callback.data.split(":")
-    action = parts[2]
-
-    if action == "renew":
-        cer_id = parts[3]
-        order_id = int(parts[4])
-    else:
-        cer_id = None
-        order_id = int(parts[3])
-    telegram_id = callback.from_user.id
-
-    async with AsyncSessionLocal() as session:
-        order = await get_order_by_id(session, order_id)
-
-        if not order:
-            await callback.answer("Заказ не найден", show_alert=True)
-            return
-
-        if order.status == "paid":
-            await callback.answer("Заказ уже оплачен", show_alert=True)
-            return
-
-        if action == "buy":
-            try:
-                subscription = await create_new_pending_subscription(
-                    session=session,
-                    user_id=order.user_id,
-                    telegram_id=telegram_id,
-                )
-            except ValueError:
-                await callback.answer(
-                    "У вас уже максимальное количество подписок: 5.",
-                    show_alert=True,
-                )
-                return
-
-            manager = MikroTikManager(config.mikrotik)
+            order = await create_order(
+                session=session,
+                telegram_id=telegram_id,
+                tariff_code=tariff_code,
+                action="buy",
+                subscription_id=subscription.id,
+                cer_id=subscription.cer_id,
+            )
 
             await callback.message.edit_text(
-                "⏳ Создаю VPN-сертификат...\n\n"
-                "Это может занять немного времени."
+                "⏳ Заказ создан.\n\n"
+                "Создаю VPN-сертификат в фоновом режиме..."
             )
 
+            manager = MikroTikManager(config.mikrotik)
             cert_path = await manager.certs.create_cert(subscription.cer_id)
 
             subscription = await mark_cert_created(
@@ -345,56 +290,139 @@ async def test_paid_order(callback: CallbackQuery):
             )
 
             if not subscription or subscription.telegram_id != telegram_id:
-                await callback.answer(
+                await callback.message.edit_text(
                     "Подписка для продления не найдена.",
-                    show_alert=True,
+                    reply_markup=back_to_main_keyboard,
                 )
                 return
 
+            order = await create_order(
+                session=session,
+                telegram_id=telegram_id,
+                tariff_code=tariff_code,
+                action="renew",
+                subscription_id=subscription.id,
+                cer_id=subscription.cer_id,
+            )
+
         else:
-            await callback.answer("Неизвестное действие.", show_alert=True)
+            await callback.message.edit_text(
+                "Неизвестное действие.",
+                reply_markup=back_to_main_keyboard,
+            )
             return
 
-        order = await mark_order_paid(session, order_id)
+    tariff = TARIFFS[tariff_code]
+
+    await callback.message.edit_text(
+        "🧾 Заказ создан\n\n"
+        f"Номер заказа: #{order.id}\n"
+        f"Тариф: {tariff['title']}\n"
+        f"Срок: {order.days} дн.\n"
+        f"Сумма: {order.amount} ₽\n\n"
+        "Для теста нажмите кнопку ниже.",
+        reply_markup=test_payment_keyboard(order.id),
+    )
+
+@router.callback_query(F.data.startswith("order:test_paid:"))
+async def test_paid_order(callback: CallbackQuery):
+    await callback.answer("Обрабатываю оплату...")
+
+    order_id = int(callback.data.split(":")[-1])
+
+    async with AsyncSessionLocal() as session:
+        order = await get_order_by_id(session, order_id)
+
+        if not order:
+            await callback.message.edit_text(
+                "Заказ не найден.",
+                reply_markup=back_to_main_keyboard,
+            )
+            return
+
+        if order.status == "paid":
+            await callback.message.edit_text(
+                "Этот заказ уже оплачен.",
+                reply_markup=back_to_main_keyboard,
+            )
+            return
+
+        if not order.cer_id:
+            await callback.message.edit_text(
+                "У заказа не указан сертификат.",
+                reply_markup=back_to_main_keyboard,
+            )
+            return
+
+        subscription = await get_subscription_by_cer_id(
+            session=session,
+            cer_id=order.cer_id,
+        )
+
+        if not subscription:
+            await callback.message.edit_text(
+                "Подписка не найдена.",
+                reply_markup=back_to_main_keyboard,
+            )
+            return
+
+        order = await mark_order_paid(
+            session=session,
+            order_id=order.id,
+        )
 
         subscription = await activate_or_extend_subscription(
             session=session,
-            cer_id=subscription.cer_id,
+            cer_id=order.cer_id,
             tariff_code=order.tariff_code,
         )
 
-        was_sent = await send_certificate(
-            bot=callback.bot,
-            session=session,
-            subscription=subscription,
-            force=False,
-        )
+        if order.action == "buy":
+            try:
+                was_sent = await send_certificate(
+                    bot=callback.bot,
+                    session=session,
+                    subscription=subscription,
+                    force=False,
+                )
+            except FileNotFoundError:
+                await callback.message.edit_text(
+                    "✅ Оплата имитирована\n\n"
+                    "Подписка активирована, но файл сертификата не найден.",
+                    reply_markup=back_to_main_keyboard,
+                )
+                return
 
-    if action == "buy" and was_sent:
-        text = (
-            "✅ Оплата имитирована\n\n"
-            "Подписка активирована.\n"
-            "Сертификат отправлен вам файлом."
-        )
-    elif action == "renew":
-        text = (
-            "✅ Оплата имитирована\n\n"
-            "Подписка продлена.\n"
-            "Ваш сертификат остаётся прежним."
-        )
-    else:
-        text = (
-            "✅ Оплата имитирована\n\n"
-            "Подписка активирована.\n"
-            "Ваш сертификат остаётся прежним."
-        )
+            if was_sent:
+                text = (
+                    "✅ Оплата имитирована\n\n"
+                    "Подписка активирована.\n"
+                    "Сертификат отправлен вам файлом."
+                )
+            else:
+                text = (
+                    "✅ Оплата имитирована\n\n"
+                    "Подписка активирована.\n"
+                    "Сертификат уже был отправлен ранее."
+                )
+
+        elif order.action == "renew":
+            text = (
+                "✅ Оплата имитирована\n\n"
+                "Подписка продлена.\n"
+                "Ваш сертификат остаётся прежним."
+            )
+
+        else:
+            text = (
+                "✅ Оплата имитирована\n\n"
+                "Заказ обработан."
+            )
 
     await callback.message.edit_text(
         text,
         reply_markup=back_to_main_keyboard,
     )
-    await callback.answer()
-
 
 @router.callback_query(F.data == "subscription:download_cert")
 async def download_cert(callback: CallbackQuery):
