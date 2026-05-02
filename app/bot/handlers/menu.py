@@ -36,13 +36,22 @@ WELCOME_TEXT = (
 )
 
 
-def test_payment_keyboard(order_id: int, action: str) -> InlineKeyboardMarkup:
+def test_payment_keyboard(
+    order_id: int,
+    action: str,
+    cer_id: str | None = None,
+) -> InlineKeyboardMarkup:
+    if cer_id:
+        callback_data = f"order:test_paid:{action}:{cer_id}:{order_id}"
+    else:
+        callback_data = f"order:test_paid:{action}:{order_id}"
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="✅ Имитировать оплату",
-                    callback_data=f"order:test_paid:{action}:{order_id}",
+                    callback_data=callback_data,
                 )
             ],
             [
@@ -53,7 +62,6 @@ def test_payment_keyboard(order_id: int, action: str) -> InlineKeyboardMarkup:
             ],
         ]
     )
-
 
 async def build_profile_text(telegram_id: int) -> str:
     async with AsyncSessionLocal() as session:
@@ -162,19 +170,70 @@ async def menu_tariffs(callback: CallbackQuery):
 
 @router.callback_query(F.data == "subscription:renew")
 async def renew_subscription(callback: CallbackQuery):
+    async with AsyncSessionLocal() as session:
+        subscriptions = await get_user_subscriptions(
+            session=session,
+            telegram_id=callback.from_user.id,
+        )
+
+    if not subscriptions:
+        await callback.answer(
+            "У вас нет подписок для продления.",
+            show_alert=True,
+        )
+        return
+
+    if len(subscriptions) == 1:
+        subscription = subscriptions[0]
+
+        await callback.message.edit_text(
+            "🔄 Продление подписки\n\n"
+            "Выберите тариф:",
+            reply_markup=tariffs_keyboard(
+                action="renew",
+                cer_id=subscription.cer_id,
+                back_callback="profile:subscriptions",
+            ),
+        )
+        await callback.answer()
+        return
+
     await callback.message.edit_text(
-        "🔄 Продление подписки\n\nВыберите тариф:",
-        reply_markup=tariffs_keyboard(
-            action="renew",
-            back_callback="profile:subscriptions",
-        ),
+        "🔄 Продление подписки\n\n"
+        "Выберите подписку, которую хотите продлить:",
+        reply_markup=select_subscription_keyboard(subscriptions),
     )
     await callback.answer()
 
+@router.callback_query(F.data.startswith("renew_sub:"))
+async def select_subscription_for_renew(callback: CallbackQuery):
+    cer_id = callback.data.split(":", 1)[1]
+
+    await callback.message.edit_text(
+        "🔄 Продление подписки\n\n"
+        f"Выбрана подписка: `{cer_id}`\n\n"
+        "Теперь выберите тариф:",
+        reply_markup=tariffs_keyboard(
+            action="renew",
+            cer_id=cer_id,
+            back_callback="subscription:renew",
+        ),
+        parse_mode="Markdown",
+    )
+    await callback.answer()
 
 @router.callback_query(F.data.startswith("tariff:"))
 async def select_tariff(callback: CallbackQuery):
-    _, action, tariff_code = callback.data.split(":")
+    parts = callback.data.split(":")
+
+    action = parts[1]
+
+    if action == "renew":
+        cer_id = parts[2]
+        tariff_code = parts[3]
+    else:
+        cer_id = None
+        tariff_code = parts[2]
 
     async with AsyncSessionLocal() as session:
         if action == "buy":
@@ -191,14 +250,14 @@ async def select_tariff(callback: CallbackQuery):
                 return
 
         elif action == "renew":
-            subscription = await get_latest_subscription(
+            subscription = await get_subscription_by_cer_id(
                 session=session,
-                telegram_id=callback.from_user.id,
+                cer_id=cer_id,
             )
 
-            if not subscription:
+            if not subscription or subscription.telegram_id != callback.from_user.id:
                 await callback.answer(
-                    "У вас нет подписки для продления.",
+                    "Подписка для продления не найдена.",
                     show_alert=True,
                 )
                 return
@@ -222,15 +281,21 @@ async def select_tariff(callback: CallbackQuery):
         f"Срок: {order.days} дн.\n"
         f"Сумма: {order.amount} ₽\n\n"
         "Для теста нажмите кнопку ниже.",
-        reply_markup=test_payment_keyboard(order.id, action),
+        reply_markup=test_payment_keyboard(order.id, action, cer_id),
     )
     await callback.answer()
 
-
 @router.callback_query(F.data.startswith("order:test_paid:"))
 async def test_paid_order(callback: CallbackQuery):
-    _, _, action, order_id_raw = callback.data.split(":")
-    order_id = int(order_id_raw)
+    parts = callback.data.split(":")
+    action = parts[2]
+
+    if action == "renew":
+        cer_id = parts[3]
+        order_id = int(parts[4])
+    else:
+        cer_id = None
+        order_id = int(parts[3])
     telegram_id = callback.from_user.id
 
     async with AsyncSessionLocal() as session:
@@ -274,12 +339,12 @@ async def test_paid_order(callback: CallbackQuery):
             )
 
         elif action == "renew":
-            subscription = await get_latest_subscription(
+            subscription = await get_subscription_by_cer_id(
                 session=session,
-                telegram_id=telegram_id,
+                cer_id=cer_id,
             )
 
-            if not subscription:
+            if not subscription or subscription.telegram_id != telegram_id:
                 await callback.answer(
                     "Подписка для продления не найдена.",
                     show_alert=True,
