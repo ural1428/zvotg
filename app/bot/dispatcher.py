@@ -8,6 +8,7 @@ from app.bot.handlers import (
     profile,
     menu,
     instructions,
+    easter_egg,
 )
 
 
@@ -33,6 +34,10 @@ def setup_dispatcher():
 
     dp.include_router(
         instructions.router,
+    )
+
+    dp.include_router(
+        easter_egg.router,
     )
 
     return dp

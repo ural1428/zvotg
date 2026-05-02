@@ -89,6 +89,8 @@ async def safe_edit(callback: CallbackQuery, text: str, reply_markup=None):
 
 @router.callback_query(F.data == "android:video")
 async def send_android_video(callback: CallbackQuery):
+    await callback.answer("Отправляю видео...")
+
     video_file = Path(ANDROID_VIDEO_PATH)
 
     if not video_file.exists():
@@ -102,8 +104,6 @@ async def send_android_video(callback: CallbackQuery):
         video=FSInputFile(str(video_file)),
         caption="🎥 Видео-инструкция по быстрой установке VPN на Android",
     )
-
-    await callback.answer("Видео отправлено.")
 
 @router.callback_query(F.data.startswith("ios_setup:"))
 async def ios_setup(callback: CallbackQuery):

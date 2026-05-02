@@ -28,6 +28,7 @@ class Config:
     vpn_server_host: str
     vpn_profile_name: str
     cert_password: str
+    easter_egg_code: str | None
 config = Config(
     bot_token=os.getenv("BOT_TOKEN"),
     db=DatabaseConfig(
@@ -46,4 +47,5 @@ config = Config(
     vpn_server_host=os.getenv("VPN_SERVER_HOST"),
     vpn_profile_name=os.getenv("VPN_PROFILE_NAME", "ZVO VPN"),
     cert_password=os.getenv("CERT_PASSWORD", "123456789"),
+    easter_egg_code=os.getenv("EASTER_EGG_CODE"),
 )

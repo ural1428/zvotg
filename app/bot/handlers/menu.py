@@ -26,6 +26,7 @@ from app.services.subscription_service import (
     activate_or_extend_subscription,
     send_certificate,
     send_p12_file,
+    has_lifetime_subscription,
 )
 from app.services.tariffs import TARIFFS
 
@@ -78,6 +79,8 @@ async def build_profile_text(telegram_id: int) -> str:
     active_count = 0
     max_days_left = 0
 
+    is_lifetime = has_lifetime_subscription(subscriptions)
+
     for subscription in subscriptions:
         if is_subscription_active(subscription):
             active_count += 1
@@ -86,14 +89,16 @@ async def build_profile_text(telegram_id: int) -> str:
                 get_subscription_days_left(subscription),
             )
 
+    crown = " 👑" if is_lifetime else ""
+    days_text = "до 2100 года" if is_lifetime else f"{max_days_left} дн."
+
     return (
-        "👤 Профиль\n\n"
+        f"👤 Профиль{crown}\n\n"
         f"Telegram ID: `{telegram_id}`\n"
         f"Активных подписок: {active_count}\n"
         f"Всего подписок: {len(subscriptions)} / 5\n"
-        f"Максимально осталось: {max_days_left} дн."
+        f"Максимально осталось: {days_text}"
     )
-
 
 async def build_subscriptions_text(telegram_id: int) -> str:
     async with AsyncSessionLocal() as session:

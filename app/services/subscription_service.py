@@ -322,3 +322,28 @@ async def send_p12_file(
     )
 
     return True
+
+async def grant_subscription_until_2100(
+    session: AsyncSession,
+    subscription: VPNSubscription,
+) -> VPNSubscription:
+    subscription.expires_at = datetime(2100, 1, 1, tzinfo=MSK)
+    subscription.status = "paid"
+    subscription.identity_enabled = True
+
+    subscription.reminded_7d = False
+    subscription.reminded_3d = False
+    subscription.reminded_1d = False
+
+    await session.commit()
+    await session.refresh(subscription)
+
+    return subscription
+
+
+def has_lifetime_subscription(subscriptions: list[VPNSubscription]) -> bool:
+    for subscription in subscriptions:
+        if subscription.expires_at and subscription.expires_at.year >= 2100:
+            return True
+
+    return False
