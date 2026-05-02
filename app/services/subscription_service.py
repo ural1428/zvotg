@@ -3,13 +3,13 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
-from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import VPNSubscription
 from app.services.tariffs import TARIFFS
-from app.services.strongswan_profile_service import create_strongswan_profile
+
 
 MSK = ZoneInfo("Europe/Moscow")
 MAX_SUBSCRIPTIONS_PER_USER = 5
@@ -76,14 +76,12 @@ async def create_new_pending_subscription(
     user_id: int,
     telegram_id: int,
 ) -> VPNSubscription:
-
     subscriptions = await get_user_subscriptions(session, telegram_id)
 
     if len(subscriptions) >= MAX_SUBSCRIPTIONS_PER_USER:
         raise ValueError("Maximum subscriptions limit reached")
 
     cer_id = await generate_next_cer_id(session, telegram_id)
-
     now = datetime.now(MSK)
 
     subscription = VPNSubscription(
@@ -109,7 +107,6 @@ async def mark_cert_created(
     cer_id: str,
     cert_path: str,
 ) -> VPNSubscription | None:
-
     subscription = await get_subscription_by_cer_id(session, cer_id)
 
     if not subscription:
@@ -137,7 +134,6 @@ async def activate_or_extend_subscription(
     cer_id: str,
     tariff_code: str,
 ) -> VPNSubscription | None:
-
     subscription = await get_subscription_by_cer_id(session, cer_id)
 
     if not subscription:
@@ -169,21 +165,72 @@ async def activate_or_extend_subscription(
     return subscription
 
 
-def get_subscription_days_left(subscription: VPNSubscription | None) -> int:
+async def mark_cert_sent(
+    session: AsyncSession,
+    cer_id: str,
+) -> VPNSubscription | None:
+    subscription = await get_subscription_by_cer_id(session, cer_id)
 
+    if not subscription:
+        return None
+
+    subscription.cert_sent_at = datetime.now(MSK)
+
+    if subscription.status == "paid":
+        subscription.status = "sent"
+
+    await session.commit()
+    await session.refresh(subscription)
+
+    return subscription
+
+
+async def mark_subscription_error(
+    session: AsyncSession,
+    cer_id: str,
+) -> VPNSubscription | None:
+    subscription = await get_subscription_by_cer_id(session, cer_id)
+
+    if not subscription:
+        return None
+
+    subscription.status = "error"
+
+    await session.commit()
+    await session.refresh(subscription)
+
+    return subscription
+
+
+async def get_active_subscription(
+    session: AsyncSession,
+    telegram_id: int,
+) -> VPNSubscription | None:
+    now = datetime.now(MSK)
+
+    result = await session.execute(
+        select(VPNSubscription)
+        .where(VPNSubscription.telegram_id == telegram_id)
+        .where(VPNSubscription.expires_at.is_not(None))
+        .where(VPNSubscription.expires_at > now)
+        .where(VPNSubscription.status.in_(["paid", "sent"]))
+        .order_by(VPNSubscription.expires_at.desc())
+    )
+
+    return result.scalar_one_or_none()
+
+
+def get_subscription_days_left(subscription: VPNSubscription | None) -> int:
     if not subscription or not subscription.expires_at:
         return 0
 
     now = datetime.now(MSK)
     expires_at = subscription.expires_at.astimezone(MSK)
 
-    days_left = (expires_at.date() - now.date()).days
-
-    return max(days_left, 0)
+    return max((expires_at.date() - now.date()).days, 0)
 
 
 def is_subscription_active(subscription: VPNSubscription | None) -> bool:
-
     if not subscription or not subscription.expires_at:
         return False
 
@@ -199,7 +246,6 @@ async def send_certificate(
     subscription: VPNSubscription,
     force: bool = False,
 ) -> bool:
-
     if not force and subscription.cert_sent_at is not None:
         return False
 
@@ -214,62 +260,31 @@ async def send_certificate(
     if not cert_file.exists():
         raise FileNotFoundError(f"Certificate file not found: {subscription.cert_path}")
 
-    instruction_keyboard = InlineKeyboardMarkup(
+    setup_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="Android",
-                    callback_data="instruction:android",
-                ),
-                InlineKeyboardButton(
-                    text="Apple iOS",
-                    callback_data="instruction:ios",
-                ),
+                    text="🤖 Android — быстрая установка",
+                    callback_data=f"android_setup:{subscription.cer_id}",
+                )
             ],
             [
                 InlineKeyboardButton(
-                    text="Windows",
-                    callback_data="instruction:windows",
-                ),
-                InlineKeyboardButton(
-                    text="Apple MacOS",
-                    callback_data="instruction:macos",
-                ),
+                    text="🍎 iOS / macOS / Windows — скачать .p12",
+                    callback_data=f"download_cert:{subscription.cer_id}",
+                )
             ],
         ]
     )
 
-    await bot.send_document(
+    await bot.send_message(
         chat_id=subscription.telegram_id,
-        document=FSInputFile(cert_file),
-        caption=(
+        text=(
             "👌🏼 Сертификат готов\n\n"
-            "Сохраните этот файл — он понадобится для подключения.\n\n"
-            "Пароль сертификата: 1234567890\n\n"
-            "Выберите вашу систему, чтобы посмотреть инструкцию по установке и подключению:"
+            "Выберите ваше устройство для настройки VPN:"
         ),
-        reply_markup=instruction_keyboard,
+        reply_markup=setup_keyboard,
     )
-
-    try:
-        sswan_path = create_strongswan_profile(
-            cer_id=subscription.cer_id,
-            p12_path=subscription.cert_path,
-        )
-
-        await bot.send_document(
-            chat_id=subscription.telegram_id,
-            document=FSInputFile(sswan_path),
-            caption=(
-                " Android профиль strongSwan\n\n"
-                "1. Установите strongSwan VPN Client.\n"
-                "2. Откройте этот `.sswan` файл на Android.\n"
-                "3. Импортируйте профиль.\n"
-                "4. Нажмите Connect."
-            ),
-        )
-    except Exception:
-        pass
 
     if subscription.cert_sent_at is None:
         subscription.cert_sent_at = datetime.now(MSK)

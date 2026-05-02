@@ -553,43 +553,136 @@ async def pay_order(callback: CallbackQuery):
     await callback.answer()
 
 
-support_keyboard = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [
-            InlineKeyboardButton(
-                text="Android",
-                callback_data="instruction:android",
+def support_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🤖 Android — быстрая установка",
+                    callback_data="vpn:android_setup",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🍎 iOS / macOS / Windows — скачать .p12",
+                    callback_data="subscription:download_cert",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💬 Группа поддержки",
+                    url="https://t.me/support",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⬅ Назад",
+                    callback_data="menu:profile",
+                )
+            ],
+        ]
+    )
+
+
+@router.callback_query(F.data == "menu:support")
+async def menu_support(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "🛠 Управление VPN\n\n"
+        "Для настройки вашего устройства воспользуйтесь инструкциями ниже "
+        "или обратитесь в группу поддержки @support",
+        reply_markup=support_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "vpn:android_setup")
+async def vpn_android_setup(callback: CallbackQuery):
+    async with AsyncSessionLocal() as session:
+        subscriptions = await get_user_subscriptions(
+            session=session,
+            telegram_id=callback.from_user.id,
+        )
+
+    subscriptions = [
+        sub for sub in subscriptions
+        if sub.status in ("paid", "sent") and is_subscription_active(sub)
+    ]
+
+    if not subscriptions:
+        await callback.answer(
+            "У вас нет активных подписок.",
+            show_alert=True,
+        )
+        return
+
+    if len(subscriptions) == 1:
+        subscription = subscriptions[0]
+
+        await callback.message.edit_text(
+            "🤖 Быстрая установка VPN на Android\n\n"
+            "1. Скачайте [StrongSwan из Google Play]"
+            "(https://play.google.com/store/apps/details?id=org.strongswan.android) "
+            "или скачайте APK файл по кнопке ниже.\n\n"
+            "2. Нажмите *«Загрузить профиль»*.\n\n"
+            "3. Введите пароль: `123456789`.\n\n"
+            "4. Два раза нажмите *OK*.\n\n"
+            "5. Выберите *«Выбрать»*. Чек-бокс уже будет стоять на вашем сертификате.\n\n"
+            "6. Нажмите *IMPORT* в правом верхнем углу.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="📦 Скачать APK StrongSwan",
+                            callback_data="android:download_apk",
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="⚡ Загрузить профиль",
+                            callback_data=f"android:download_profile:{subscription.cer_id}",
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="⬅ Назад",
+                            callback_data="menu:support",
+                        )
+                    ],
+                ]
             ),
-            InlineKeyboardButton(
-                text="Apple iOS",
-                callback_data="instruction:ios",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="Windows",
-                callback_data="instruction:windows",
-            ),
-            InlineKeyboardButton(
-                text="Apple MacOS",
-                callback_data="instruction:macos",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="💬 Группа поддержки",
-                url="https://t.me/support",
-            )
-        ],
+            parse_mode="Markdown",
+            disable_web_page_preview=True,
+        )
+        await callback.answer()
+        return
+
+    keyboard = []
+
+    for index, subscription in enumerate(subscriptions, start=1):
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text=f"🔐 IKEv2 VPN #{index}",
+                    callback_data=f"android_setup:{subscription.cer_id}",
+                )
+            ]
+        )
+
+    keyboard.append(
         [
             InlineKeyboardButton(
                 text="⬅ Назад",
-                callback_data="menu:main",
+                callback_data="menu:support",
             )
-        ],
-    ]
-)
+        ]
+    )
 
+    await callback.message.edit_text(
+        "🤖 Быстрая установка Android\n\n"
+        "Выберите подписку:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+    )
+    await callback.answer()
 
 @router.callback_query(F.data == "menu:support")
 async def menu_support(callback: CallbackQuery):
