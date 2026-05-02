@@ -270,8 +270,8 @@ async def send_certificate(
             ],
             [
                 InlineKeyboardButton(
-                    text="🍎 iOS / macOS / Windows — скачать .p12",
-                    callback_data=f"download_cert:{subscription.cer_id}",
+                    text="🍎 Apple iOS — установка VPN",
+                    callback_data=f"ios_setup:{subscription.cer_id}",
                 )
             ],
         ]

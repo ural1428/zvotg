@@ -561,8 +561,8 @@ def support_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    text="🍎 iOS / macOS / Windows — скачать .p12",
-                    callback_data="subscription:download_cert",
+                    text="🍎 Apple iOS — установка VPN",
+                    callback_data="vpn:ios_setup",
                 )
             ],
             [
@@ -691,4 +691,63 @@ async def menu_support(callback: CallbackQuery):
         reply_markup=support_keyboard,
     )
 
+    await callback.answer()
+
+@router.callback_query(F.data == "vpn:ios_setup")
+async def vpn_ios_setup(callback: CallbackQuery):
+    async with AsyncSessionLocal() as session:
+        subscriptions = await get_user_subscriptions(
+            session=session,
+            telegram_id=callback.from_user.id,
+        )
+
+    subscriptions = [
+        sub for sub in subscriptions
+        if sub.status in ("paid", "sent") and is_subscription_active(sub)
+    ]
+
+    if not subscriptions:
+        await callback.answer("У вас нет активных подписок.", show_alert=True)
+        return
+
+    if len(subscriptions) == 1:
+        await callback.message.edit_text(
+            "🍎 Apple iOS — установка VPN",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="Открыть инструкцию iOS",
+                            callback_data=f"ios_setup:{subscriptions[0].cer_id}",
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="⬅ Назад",
+                            callback_data="menu:support",
+                        )
+                    ],
+                ]
+            ),
+        )
+        await callback.answer()
+        return
+
+    keyboard = []
+    for index, subscription in enumerate(subscriptions, start=1):
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"🔐 IKEv2 VPN #{index}",
+                callback_data=f"ios_setup:{subscription.cer_id}",
+            )
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton(text="⬅ Назад", callback_data="menu:support")
+    ])
+
+    await callback.message.edit_text(
+        "🍎 Apple iOS — установка VPN\n\nВыберите подписку:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+    )
     await callback.answer()
