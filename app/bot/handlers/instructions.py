@@ -13,7 +13,7 @@ from app.services.subscription_service import get_subscription_by_cer_id
 
 router = Router()
 
-ANDROID_APK_PATH = "/storage/apk/strongSwan-2.6.2.apk"
+ANDROID_APK_PATH = "storage/apk/strongSwan-2.6.2.apk"
 IOS_CA_CERT_PATH = "storage/certs/cert_export_ca.zvotg.ru.crt"
 ANDROID_VIDEO_PATH = "storage/video/strongswan_small.mp4"
 

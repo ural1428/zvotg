@@ -11,6 +11,12 @@ profile_keyboard = InlineKeyboardMarkup(
         ],
         [
             InlineKeyboardButton(
+                text="🎁 Получить 5 дней",
+                callback_data="profile:referral",
+            )
+        ],
+        [
+            InlineKeyboardButton(
                 text="⚙ Управление VPN",
                 callback_data="menu:support",
             )
@@ -25,25 +31,44 @@ profile_keyboard = InlineKeyboardMarkup(
 )
 
 
-subscriptions_keyboard = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [
-            InlineKeyboardButton(
-                text="🔄 Продлить подписку",
-                callback_data="subscription:renew",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="📄 Скачать сертификат",
-                callback_data="subscription:download_cert",
-            )
-        ],
+def subscriptions_keyboard(has_subscriptions: bool) -> InlineKeyboardMarkup:
+    keyboard = []
+
+    if has_subscriptions:
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text="🔄 Продлить подписку",
+                    callback_data="subscription:renew",
+                )
+            ]
+        )
+
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text="📄 Скачать сертификат",
+                    callback_data="subscription:download_cert",
+                )
+            ]
+        )
+    else:
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text="💳 Купить подписку",
+                    callback_data="menu:buy",
+                )
+            ]
+        )
+
+    keyboard.append(
         [
             InlineKeyboardButton(
                 text="⬅ Назад",
                 callback_data="menu:profile",
             )
-        ],
-    ]
-)
+        ]
+    )
+
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)

@@ -137,3 +137,65 @@ class Order(Base):
         nullable=True,
         index=True,
     )
+
+    public_order_id: Mapped[str | None] = mapped_column(
+        String(32),
+        unique=True,
+        nullable=True,
+        index=True,
+    )
+
+    payment_url: Mapped[str | None] = mapped_column(
+        String(1000),
+        nullable=True,
+    )
+
+    payment_status: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+
+    payment_id: Mapped[str | None] = mapped_column(
+    String(255),
+    nullable=True,
+    )
+class Referral(Base):
+    __tablename__ = "referrals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    referrer_telegram_id: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        index=True,
+    )
+
+    referred_telegram_id: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="registered",
+        nullable=False,
+    )
+
+    reward_days: Mapped[int] = mapped_column(
+        Integer,
+        default=5,
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+    rewarded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )

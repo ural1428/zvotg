@@ -1,4 +1,5 @@
 from aiogram import Router, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from sqlalchemy import select
 
@@ -14,7 +15,13 @@ from app.config import config
 from app.database.models import User
 from app.database.session import AsyncSessionLocal
 from app.integrations.mikrotik.manager import MikroTikManager
-from app.services.order_service import create_order, get_order_by_id, mark_order_paid
+from app.services.order_service import (
+    create_order,
+    get_order_by_id,
+    mark_order_paid,
+    attach_payment_to_order,
+)
+from app.services.tbank_service import init_tbank_payment
 from app.services.subscription_service import (
     get_user_subscriptions,
     get_latest_subscription,
@@ -27,6 +34,11 @@ from app.services.subscription_service import (
     send_certificate,
     send_p12_file,
     has_lifetime_subscription,
+)
+from app.services.referral_service import (
+    build_referral_code,
+    get_referral_stats,
+    reward_referrer_for_paid_user,
 )
 from app.services.tariffs import TARIFFS
 
@@ -50,6 +62,23 @@ def visible_subscriptions(subscriptions):
         if sub.status in VISIBLE_SUBSCRIPTION_STATUSES
     ]
 
+def payment_keyboard(payment_url: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="💳 Оплатить",
+                    url=payment_url,
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⬅ Назад",
+                    callback_data="menu:main",
+                )
+            ],
+        ]
+    )
 
 def test_payment_keyboard(order_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -149,15 +178,25 @@ async def menu_profile(callback: CallbackQuery):
 
 @router.callback_query(F.data == "profile:subscriptions")
 async def profile_subscriptions(callback: CallbackQuery):
+    async with AsyncSessionLocal() as session:
+        subscriptions = await get_user_subscriptions(
+            session=session,
+            telegram_id=callback.from_user.id,
+        )
+
+    subscriptions = visible_subscriptions(subscriptions)
+
     text = await build_subscriptions_text(callback.from_user.id)
 
     await callback.message.edit_text(
         text,
-        reply_markup=subscriptions_keyboard,
+        reply_markup=subscriptions_keyboard(
+            has_subscriptions=bool(subscriptions),
+        ),
         parse_mode="Markdown",
     )
-    await callback.answer()
 
+    await callback.answer()
 
 @router.callback_query(F.data == "menu:buy")
 async def menu_buy(callback: CallbackQuery):
@@ -285,11 +324,19 @@ async def select_tariff(callback: CallbackQuery):
                 )
                 return
 
-            subscription = await create_new_pending_subscription(
-                session=session,
-                user_id=user.id,
-                telegram_id=telegram_id,
-            )
+            try:
+                subscription = await create_new_pending_subscription(
+                    session=session,
+                    user_id=user.id,
+                    telegram_id=telegram_id,
+                )
+            except ValueError:
+                await callback.message.edit_text(
+                    "У вас уже есть 5 созданных подписок.\n\n"
+                    "Если часть заказов не была оплачена, позже добавим раздел «Мои заказы».",
+                    reply_markup=back_to_main_keyboard,
+                )
+                return
 
             order = await create_order(
                 session=session,
@@ -302,7 +349,7 @@ async def select_tariff(callback: CallbackQuery):
 
             await callback.message.edit_text(
                 "⏳ Заказ создан.\n\n"
-                "Создаю VPN-сертификат в фоновом режиме..."
+                "Подготавливаю данные ..."
             )
 
             manager = MikroTikManager(config.mikrotik)
@@ -347,16 +394,45 @@ async def select_tariff(callback: CallbackQuery):
             )
             return
 
+        try:
+            payment_data = await init_tbank_payment(order)
+        except Exception as error:
+            await callback.message.edit_text(
+                "Не удалось создать ссылку на оплату.\n\n"
+                "Попробуйте позже или обратитесь в поддержку.",
+                reply_markup=back_to_main_keyboard,
+            )
+            raise error
+
+        payment_url = payment_data.get("PaymentURL")
+
+        if not payment_url:
+            await callback.message.edit_text(
+                "Банк не вернул ссылку на оплату.\n\n"
+                "Попробуйте позже или обратитесь в поддержку.",
+                reply_markup=back_to_main_keyboard,
+            )
+            return
+
+        order = await attach_payment_to_order(
+            session=session,
+            order_id=order.id,
+            payment_id=str(payment_data.get("PaymentId")),
+            payment_url=payment_url,
+            payment_status=payment_data.get("Status"),
+        )
+
     tariff = TARIFFS[tariff_code]
+    order_number = order.public_order_id or order.id
 
     await callback.message.edit_text(
         "🧾 Заказ создан\n\n"
-        f"Номер заказа: #{order.id}\n"
+        f"Номер заказа: #{order_number}\n"
         f"Тариф: {tariff['title']}\n"
         f"Срок: {order.days} дн.\n"
         f"Сумма: {order.amount} ₽\n\n"
-        "Для теста нажмите кнопку ниже.",
-        reply_markup=test_payment_keyboard(order.id),
+        "Нажмите кнопку ниже для оплаты.",
+        reply_markup=payment_keyboard(order.payment_url),
     )
 
 
@@ -411,6 +487,11 @@ async def test_paid_order(callback: CallbackQuery):
             session=session,
             cer_id=order.cer_id,
             tariff_code=order.tariff_code,
+        )
+
+        await reward_referrer_for_paid_user(
+            session=session,
+            referred_telegram_id=order.telegram_id,
         )
 
         if order.action == "buy":
@@ -485,7 +566,7 @@ async def download_cert_menu(callback: CallbackQuery):
             subscription = subscriptions[0]
 
             try:
-                await send_certificate(
+                await send_p12_file(
                     bot=callback.bot,
                     subscription=subscription,
                 )
@@ -544,16 +625,47 @@ async def download_selected_cert(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("order:pay:"))
 async def pay_order(callback: CallbackQuery):
+    await callback.answer()
+
     order_id = int(callback.data.split(":")[-1])
+
+    async with AsyncSessionLocal() as session:
+        order = await get_order_by_id(session, order_id)
+
+        if not order:
+            await callback.message.edit_text(
+                "Заказ не найден.",
+                reply_markup=back_to_main_keyboard,
+            )
+            return
+
+        if order.status == "paid":
+            await callback.message.edit_text(
+                "Этот заказ уже оплачен.",
+                reply_markup=back_to_main_keyboard,
+            )
+            return
+
+        if not order.payment_url:
+            payment_data = await init_tbank_payment(order)
+
+            order = await attach_payment_to_order(
+                session=session,
+                order_id=order.id,
+                payment_id=str(payment_data.get("PaymentId")),
+                payment_url=payment_data.get("PaymentURL"),
+                payment_status=payment_data.get("Status"),
+            )
+
+    order_number = order.public_order_id or order.id
 
     await callback.message.edit_text(
         "💳 Оплата заказа\n\n"
-        f"Заказ #{order_id}\n\n"
-        "Здесь позже будет подключение платёжной системы.",
-        reply_markup=back_to_main_keyboard,
+        f"Заказ #{order_number}\n"
+        f"Сумма: {order.amount} ₽\n\n"
+        "Нажмите кнопку ниже для оплаты.",
+        reply_markup=payment_keyboard(order.payment_url),
     )
-    await callback.answer()
-
 
 def support_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -588,14 +700,21 @@ def support_keyboard() -> InlineKeyboardMarkup:
 
 @router.callback_query(F.data == "menu:support")
 async def menu_support(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "🛠 Управление VPN\n\n"
-        "Для настройки вашего устройства воспользуйтесь инструкциями ниже "
-        "или обратитесь в группу поддержки @support",
-        reply_markup=support_keyboard(),
-    )
-    await callback.answer()
+    try:
+        await callback.answer()
+    except TelegramBadRequest:
+        pass
 
+    try:
+        await callback.message.edit_text(
+            "🛠 Управление VPN\n\n"
+            "Для настройки вашего устройства воспользуйтесь инструкциями ниже "
+            "или обратитесь в группу поддержки @support",
+            reply_markup=support_keyboard(),
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
 
 @router.callback_query(F.data == "vpn:android_setup")
 async def vpn_android_setup(callback: CallbackQuery):
@@ -755,4 +874,40 @@ async def vpn_ios_setup(callback: CallbackQuery):
         "🍎 Apple iOS — установка VPN\n\nВыберите подписку:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
     )
+    await callback.answer()
+
+@router.callback_query(F.data == "profile:referral")
+async def profile_referral(callback: CallbackQuery):
+    bot_info = await callback.bot.get_me()
+
+    referral_code = build_referral_code(callback.from_user.id)
+    referral_link = f"https://t.me/{bot_info.username}?start={referral_code}"
+
+    async with AsyncSessionLocal() as session:
+        stats = await get_referral_stats(
+            session=session,
+            telegram_id=callback.from_user.id,
+        )
+
+    await callback.message.edit_text(
+        "🎁 Получить 5 дней бесплатно\n\n"
+        "Пригласите друга по вашей ссылке.\n"
+        "Когда он оплатит подписку, вы получите +5 дней к вашей подписке.\n\n"
+        f"Ваша ссылка:\n`{referral_link}`\n\n"
+        f"Приглашено: {stats['total']}\n"
+        f"Ожидают оплату: {stats['registered']}\n"
+        f"Бонусов начислено: {stats['rewarded']}",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅ Назад",
+                        callback_data="menu:profile",
+                    )
+                ]
+            ]
+        ),
+        parse_mode="Markdown",
+    )
+
     await callback.answer()

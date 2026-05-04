@@ -1,3 +1,4 @@
+import random
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -9,6 +10,19 @@ from app.services.tariffs import TARIFFS
 
 
 MSK = ZoneInfo("Europe/Moscow")
+
+
+async def generate_public_order_id(session: AsyncSession) -> str:
+    while True:
+        public_order_id = str(random.randint(1000, 9999))
+
+        result = await session.execute(
+            select(Order).where(Order.public_order_id == public_order_id)
+        )
+        existing_order = result.scalar_one_or_none()
+
+        if not existing_order:
+            return public_order_id
 
 
 async def create_order(
@@ -31,8 +45,10 @@ async def create_order(
         raise ValueError("User not found")
 
     tariff = TARIFFS[tariff_code]
+    public_order_id = await generate_public_order_id(session)
 
     order = Order(
+        public_order_id=public_order_id,
         user_id=user.id,
         telegram_id=telegram_id,
         tariff_code=tariff_code,
@@ -71,7 +87,31 @@ async def mark_order_paid(
         return None
 
     order.status = "paid"
+    order.payment_status = "CONFIRMED"
     order.paid_at = datetime.now(MSK)
+
+    await session.commit()
+    await session.refresh(order)
+
+    return order
+
+
+async def attach_payment_to_order(
+    session: AsyncSession,
+    order_id: int,
+    payment_id: str,
+    payment_url: str,
+    payment_status: str | None = None,
+) -> Order | None:
+    order = await get_order_by_id(session, order_id)
+
+    if not order:
+        return None
+
+    order.payment_id = payment_id
+    order.payment_url = payment_url
+    order.payment_status = payment_status or "NEW"
+    order.status = "pending_payment"
 
     await session.commit()
     await session.refresh(order)

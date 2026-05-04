@@ -295,6 +295,8 @@ async def send_certificate(
     await session.commit()
     await session.refresh(subscription)
 
+    return True
+
 async def send_p12_file(
     bot: Bot,
     subscription: VPNSubscription,
