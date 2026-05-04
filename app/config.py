@@ -34,7 +34,6 @@ class Config:
     tbank_password: str
     tbank_init_url: str
     public_webhook_base_url: str
-
     payment_project_code: str
     payment_service_description: str
     payment_service_code: str
