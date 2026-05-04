@@ -805,17 +805,6 @@ async def vpn_android_setup(callback: CallbackQuery):
     )
     await callback.answer()
 
-@router.callback_query(F.data == "menu:support")
-async def menu_support(callback: CallbackQuery):
-
-    await callback.message.edit_text(
-        "🛠 Управление VPN\n\n"
-        "Для настройки вашего устройства воспользуйтесь инструкциями ниже "
-        "или обратитесь в группу поддержки @support",
-        reply_markup=support_keyboard,
-    )
-
-    await callback.answer()
 
 @router.callback_query(F.data == "vpn:ios_setup")
 async def vpn_ios_setup(callback: CallbackQuery):

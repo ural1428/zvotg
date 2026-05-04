@@ -105,7 +105,6 @@ class Order(Base):
     status: Mapped[str] = mapped_column(String(50), default="created", nullable=False)
 
     amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    payment_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
