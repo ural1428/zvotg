@@ -1,6 +1,15 @@
+import re
+
 from aiogram import Router, F
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import (
+    CallbackQuery,
+    Message,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+)
 from sqlalchemy import select
 
 from app.bot.keyboards.back_menu import back_to_main_keyboard
@@ -24,7 +33,6 @@ from app.services.order_service import (
 from app.services.tbank_service import init_tbank_payment
 from app.services.subscription_service import (
     get_user_subscriptions,
-    get_latest_subscription,
     get_subscription_by_cer_id,
     get_subscription_days_left,
     is_subscription_active,
@@ -47,13 +55,22 @@ router = Router()
 
 VISIBLE_SUBSCRIPTION_STATUSES = ("paid", "sent", "expired")
 
-
 WELCOME_TEXT = (
-    "👋 Добро пожаловать в VPN сервис\n\n"
+    "👋 Добро пожаловать в сервис\n\n"
     "🔐 Быстрое и безопасное подключение\n"
     "🌍 Работает на всех устройствах\n\n"
     "Выберите действие:"
 )
+
+EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
+
+
+class OrderEmailState(StatesGroup):
+    waiting_email = State()
+
+
+def is_valid_email(email: str) -> bool:
+    return bool(EMAIL_RE.match(email.strip()))
 
 
 def visible_subscriptions(subscriptions):
@@ -61,6 +78,7 @@ def visible_subscriptions(subscriptions):
         sub for sub in subscriptions
         if sub.status in VISIBLE_SUBSCRIPTION_STATUSES
     ]
+
 
 def payment_keyboard(payment_url: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -79,6 +97,7 @@ def payment_keyboard(payment_url: str) -> InlineKeyboardMarkup:
             ],
         ]
     )
+
 
 def test_payment_keyboard(order_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -99,6 +118,46 @@ def test_payment_keyboard(order_id: int) -> InlineKeyboardMarkup:
     )
 
 
+def support_bot_url() -> str:
+    username = getattr(config, "support_bot_username", None)
+
+    if username:
+        return f"https://t.me/{username}"
+
+    return "https://t.me/support"
+
+
+def support_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🤖 Android — быстрая установка",
+                    callback_data="vpn:android_setup",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🍎 Apple iOS — установка VPN",
+                    callback_data="vpn:ios_setup",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💬 Написать в поддержку",
+                    url=support_bot_url(),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⬅ Назад",
+                    callback_data="menu:profile",
+                )
+            ],
+        ]
+    )
+
+
 async def build_profile_text(telegram_id: int) -> str:
     async with AsyncSessionLocal() as session:
         subscriptions = await get_user_subscriptions(session, telegram_id)
@@ -107,7 +166,6 @@ async def build_profile_text(telegram_id: int) -> str:
 
     active_count = 0
     max_days_left = 0
-
     is_lifetime = has_lifetime_subscription(subscriptions)
 
     for subscription in subscriptions:
@@ -128,6 +186,7 @@ async def build_profile_text(telegram_id: int) -> str:
         f"Всего подписок: {len(subscriptions)} / 5\n"
         f"Максимально осталось: {days_text}"
     )
+
 
 async def build_subscriptions_text(telegram_id: int) -> str:
     async with AsyncSessionLocal() as session:
@@ -155,11 +214,47 @@ async def build_subscriptions_text(telegram_id: int) -> str:
     return "\n".join(lines)
 
 
+async def show_referral_message(message: Message):
+    bot_info = await message.bot.get_me()
+
+    referral_code = build_referral_code(message.from_user.id)
+    referral_link = f"https://t.me/{bot_info.username}?start={referral_code}"
+
+    async with AsyncSessionLocal() as session:
+        stats = await get_referral_stats(
+            session=session,
+            telegram_id=message.from_user.id,
+        )
+
+    await message.answer(
+        "🎁 Получить 5 дней бесплатно\n\n"
+        "Пригласите друга по вашей ссылке.\n"
+        "Когда он оплатит подписку, вы получите +5 дней к вашей подписке.\n\n"
+        f"Ваша ссылка:\n`{referral_link}`\n\n"
+        f"Приглашено: {stats['total']}\n"
+        f"Ожидают оплату: {stats['registered']}\n"
+        f"Бонусов начислено: {stats['rewarded']}",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅ Назад",
+                        callback_data="menu:profile",
+                    )
+                ]
+            ]
+        ),
+        parse_mode="Markdown",
+    )
+
+
 @router.callback_query(F.data == "menu:main")
-async def menu_main(callback: CallbackQuery):
+async def menu_main(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+
     await callback.message.edit_text(
         WELCOME_TEXT,
-        reply_markup=main_menu_keyboard,
+        reply_markup=main_menu_keyboard(callback.from_user.id),
     )
     await callback.answer()
 
@@ -185,7 +280,6 @@ async def profile_subscriptions(callback: CallbackQuery):
         )
 
     subscriptions = visible_subscriptions(subscriptions)
-
     text = await build_subscriptions_text(callback.from_user.id)
 
     await callback.message.edit_text(
@@ -195,8 +289,8 @@ async def profile_subscriptions(callback: CallbackQuery):
         ),
         parse_mode="Markdown",
     )
-
     await callback.answer()
+
 
 @router.callback_query(F.data == "menu:buy")
 async def menu_buy(callback: CallbackQuery):
@@ -281,7 +375,7 @@ async def select_subscription_for_renew(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("tariff:"))
-async def select_tariff(callback: CallbackQuery):
+async def select_tariff(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     action = parts[1]
 
@@ -292,9 +386,108 @@ async def select_tariff(callback: CallbackQuery):
         cer_id = None
         tariff_code = parts[2]
 
-    telegram_id = callback.from_user.id
+    await state.set_state(OrderEmailState.waiting_email)
+    await state.update_data(
+        action=action,
+        cer_id=cer_id,
+        tariff_code=tariff_code,
+    )
 
-    await callback.answer("Создаю заказ...")
+    await callback.message.edit_text(
+        "📧 Введите email для отправки чека.\n\n"
+        "Например:\n"
+        "`user@example.com`",
+        parse_mode="Markdown",
+        reply_markup=back_to_main_keyboard,
+    )
+
+    await callback.answer()
+
+
+@router.message(OrderEmailState.waiting_email)
+async def process_order_email(message: Message, state: FSMContext):
+    if not message.text:
+        await message.answer(
+            "Введите email текстом, например:\n"
+            "`user@example.com`",
+            parse_mode="Markdown",
+        )
+        return
+
+    text = message.text.strip()
+
+    if text in {"Главное меню", "Профиль", "Тарифы", "Поддержка"}:
+        await state.clear()
+
+        if text == "Главное меню":
+            await message.answer(
+                WELCOME_TEXT,
+                reply_markup=main_menu_keyboard(message.from_user.id),
+            )
+            return
+
+        if text == "Профиль":
+            profile_text = await build_profile_text(message.from_user.id)
+            await message.answer(
+                profile_text,
+                reply_markup=profile_keyboard,
+                parse_mode="Markdown",
+            )
+            return
+
+        if text == "Тарифы":
+            await message.answer(
+                "📋 Доступные тарифы\n\n"
+                "Выберите тариф для оформления заказа:",
+                reply_markup=tariffs_keyboard(
+                    action="buy",
+                    back_callback="menu:main",
+                ),
+            )
+            return
+
+        if text == "Поддержка":
+            await message.answer(
+                "🛠 Управление VPN\n\n"
+                "Для настройки вашего устройства воспользуйтесь инструкциями ниже "
+                "или обратитесь в поддержку.",
+                reply_markup=support_keyboard(),
+            )
+            return
+
+    email = text.lower()
+
+    if not is_valid_email(email):
+        await message.answer(
+            "Некорректный email.\n\n"
+            "Введите email ещё раз, например:\n"
+            "`user@example.com`",
+            parse_mode="Markdown",
+        )
+        return
+
+    data = await state.get_data()
+    await state.clear()
+
+    await create_payment_after_email(
+        message=message,
+        action=data["action"],
+        tariff_code=data["tariff_code"],
+        cer_id=data.get("cer_id"),
+        customer_email=email,
+    )
+
+
+async def create_payment_after_email(
+    message: Message,
+    action: str,
+    tariff_code: str,
+    cer_id: str | None,
+    customer_email: str,
+):
+    telegram_id = message.from_user.id
+
+    status_message = await message.answer("⏳ Создаю заказ...")
 
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -303,7 +496,7 @@ async def select_tariff(callback: CallbackQuery):
         user = result.scalar_one_or_none()
 
         if not user:
-            await callback.message.edit_text(
+            await status_message.edit_text(
                 "Пользователь не найден. Нажмите /start.",
                 reply_markup=back_to_main_keyboard,
             )
@@ -318,7 +511,7 @@ async def select_tariff(callback: CallbackQuery):
             visible_count = len(visible_subscriptions(subscriptions))
 
             if visible_count >= 5:
-                await callback.message.edit_text(
+                await status_message.edit_text(
                     "У вас уже максимальное количество подписок: 5.",
                     reply_markup=back_to_main_keyboard,
                 )
@@ -331,9 +524,9 @@ async def select_tariff(callback: CallbackQuery):
                     telegram_id=telegram_id,
                 )
             except ValueError:
-                await callback.message.edit_text(
+                await status_message.edit_text(
                     "У вас уже есть 5 созданных подписок.\n\n"
-                    "Если часть заказов не была оплачена, позже добавим раздел «Мои заказы».",
+                    "Если часть заказов не была оплачена, обратитесь в поддержку.",
                     reply_markup=back_to_main_keyboard,
                 )
                 return
@@ -345,21 +538,30 @@ async def select_tariff(callback: CallbackQuery):
                 action="buy",
                 subscription_id=subscription.id,
                 cer_id=subscription.cer_id,
+                customer_email=customer_email,
             )
 
-            await callback.message.edit_text(
+            await status_message.edit_text(
                 "⏳ Заказ создан.\n\n"
-                "Подготавливаю данные ..."
+                "Подготавливаю данные для подключения..."
             )
 
-            manager = MikroTikManager(config.mikrotik)
-            cert_path = await manager.certs.create_cert(subscription.cer_id)
+            try:
+                manager = MikroTikManager(config.mikrotik)
+                cert_path = await manager.certs.create_cert(subscription.cer_id)
 
-            subscription = await mark_cert_created(
-                session=session,
-                cer_id=subscription.cer_id,
-                cert_path=cert_path,
-            )
+                subscription = await mark_cert_created(
+                    session=session,
+                    cer_id=subscription.cer_id,
+                    cert_path=cert_path,
+                )
+            except Exception as error:
+                await status_message.edit_text(
+                    "Не удалось подготовить данные для подключения.\n\n"
+                    "Попробуйте позже или обратитесь в поддержку.",
+                    reply_markup=back_to_main_keyboard,
+                )
+                raise error
 
         elif action == "renew":
             subscription = await get_subscription_by_cer_id(
@@ -372,7 +574,7 @@ async def select_tariff(callback: CallbackQuery):
                 or subscription.telegram_id != telegram_id
                 or subscription.status not in VISIBLE_SUBSCRIPTION_STATUSES
             ):
-                await callback.message.edit_text(
+                await status_message.edit_text(
                     "Подписка для продления не найдена.",
                     reply_markup=back_to_main_keyboard,
                 )
@@ -385,10 +587,11 @@ async def select_tariff(callback: CallbackQuery):
                 action="renew",
                 subscription_id=subscription.id,
                 cer_id=subscription.cer_id,
+                customer_email=customer_email,
             )
 
         else:
-            await callback.message.edit_text(
+            await status_message.edit_text(
                 "Неизвестное действие.",
                 reply_markup=back_to_main_keyboard,
             )
@@ -397,7 +600,7 @@ async def select_tariff(callback: CallbackQuery):
         try:
             payment_data = await init_tbank_payment(order)
         except Exception as error:
-            await callback.message.edit_text(
+            await status_message.edit_text(
                 "Не удалось создать ссылку на оплату.\n\n"
                 "Попробуйте позже или обратитесь в поддержку.",
                 reply_markup=back_to_main_keyboard,
@@ -407,7 +610,7 @@ async def select_tariff(callback: CallbackQuery):
         payment_url = payment_data.get("PaymentURL")
 
         if not payment_url:
-            await callback.message.edit_text(
+            await status_message.edit_text(
                 "Банк не вернул ссылку на оплату.\n\n"
                 "Попробуйте позже или обратитесь в поддержку.",
                 reply_markup=back_to_main_keyboard,
@@ -425,14 +628,16 @@ async def select_tariff(callback: CallbackQuery):
     tariff = TARIFFS[tariff_code]
     order_number = order.public_order_id or order.id
 
-    await callback.message.edit_text(
+    await status_message.edit_text(
         "🧾 Заказ создан\n\n"
         f"Номер заказа: #{order_number}\n"
         f"Тариф: {tariff['title']}\n"
         f"Срок: {order.days} дн.\n"
-        f"Сумма: {order.amount} ₽\n\n"
+        f"Сумма: {order.amount} ₽\n"
+        f"Email для чека: `{order.customer_email}`\n\n"
         "Нажмите кнопку ниже для оплаты.",
         reply_markup=payment_keyboard(order.payment_url),
+        parse_mode="Markdown",
     )
 
 
@@ -587,6 +792,7 @@ async def download_cert_menu(callback: CallbackQuery):
     )
     await callback.answer()
 
+
 @router.callback_query(F.data.startswith("download_cert:"))
 async def download_selected_cert(callback: CallbackQuery):
     cer_id = callback.data.split(":", 1)[1]
@@ -623,6 +829,7 @@ async def download_selected_cert(callback: CallbackQuery):
 
     await callback.answer("Сертификат отправлен.", show_alert=True)
 
+
 @router.callback_query(F.data.startswith("order:pay:"))
 async def pay_order(callback: CallbackQuery):
     await callback.answer()
@@ -646,8 +853,24 @@ async def pay_order(callback: CallbackQuery):
             )
             return
 
+        if not order.customer_email:
+            await callback.message.edit_text(
+                "Для оплаты требуется email для отправки чека.\n\n"
+                "Пожалуйста, создайте заказ заново.",
+                reply_markup=back_to_main_keyboard,
+            )
+            return
+
         if not order.payment_url:
-            payment_data = await init_tbank_payment(order)
+            try:
+                payment_data = await init_tbank_payment(order)
+            except Exception as error:
+                await callback.message.edit_text(
+                    "Не удалось создать ссылку на оплату.\n\n"
+                    "Попробуйте позже или обратитесь в поддержку.",
+                    reply_markup=back_to_main_keyboard,
+                )
+                raise error
 
             order = await attach_payment_to_order(
                 session=session,
@@ -662,39 +885,11 @@ async def pay_order(callback: CallbackQuery):
     await callback.message.edit_text(
         "💳 Оплата заказа\n\n"
         f"Заказ #{order_number}\n"
-        f"Сумма: {order.amount} ₽\n\n"
+        f"Сумма: {order.amount} ₽\n"
+        f"Email для чека: `{order.customer_email}`\n\n"
         "Нажмите кнопку ниже для оплаты.",
         reply_markup=payment_keyboard(order.payment_url),
-    )
-
-def support_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🤖 Android — быстрая установка",
-                    callback_data="vpn:android_setup",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🍎 Apple iOS — установка VPN",
-                    callback_data="vpn:ios_setup",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="💬 Группа поддержки",
-                    url="https://t.me/support",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="⬅ Назад",
-                    callback_data="menu:profile",
-                )
-            ],
-        ]
+        parse_mode="Markdown",
     )
 
 
@@ -709,12 +904,13 @@ async def menu_support(callback: CallbackQuery):
         await callback.message.edit_text(
             "🛠 Управление VPN\n\n"
             "Для настройки вашего устройства воспользуйтесь инструкциями ниже "
-            "или обратитесь в группу поддержки @support",
+            "или обратитесь в поддержку.",
             reply_markup=support_keyboard(),
         )
     except TelegramBadRequest as e:
         if "message is not modified" not in str(e):
             raise
+
 
 @router.callback_query(F.data == "vpn:android_setup")
 async def vpn_android_setup(callback: CallbackQuery):
@@ -761,6 +957,12 @@ async def vpn_android_setup(callback: CallbackQuery):
                         InlineKeyboardButton(
                             text="⚡ Загрузить профиль",
                             callback_data=f"android:download_profile:{subscription.cer_id}",
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="🎥 Видео-инструкция",
+                            callback_data="android:video",
                         )
                     ],
                     [
@@ -847,23 +1049,32 @@ async def vpn_ios_setup(callback: CallbackQuery):
         return
 
     keyboard = []
-    for index, subscription in enumerate(subscriptions, start=1):
-        keyboard.append([
-            InlineKeyboardButton(
-                text=f"🔐 IKEv2 VPN #{index}",
-                callback_data=f"ios_setup:{subscription.cer_id}",
-            )
-        ])
 
-    keyboard.append([
-        InlineKeyboardButton(text="⬅ Назад", callback_data="menu:support")
-    ])
+    for index, subscription in enumerate(subscriptions, start=1):
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text=f"🔐 IKEv2 VPN #{index}",
+                    callback_data=f"ios_setup:{subscription.cer_id}",
+                )
+            ]
+        )
+
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                text="⬅ Назад",
+                callback_data="menu:support",
+            )
+        ]
+    )
 
     await callback.message.edit_text(
         "🍎 Apple iOS — установка VPN\n\nВыберите подписку:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
     )
     await callback.answer()
+
 
 @router.callback_query(F.data == "profile:referral")
 async def profile_referral(callback: CallbackQuery):
@@ -898,5 +1109,45 @@ async def profile_referral(callback: CallbackQuery):
         ),
         parse_mode="Markdown",
     )
-
     await callback.answer()
+
+
+@router.message(F.text == "Главное меню")
+async def reply_main_menu(message: Message):
+    await message.answer(
+        WELCOME_TEXT,
+        reply_markup=main_menu_keyboard(message.from_user.id),
+    )
+
+
+@router.message(F.text == "Профиль")
+async def reply_profile(message: Message):
+    text = await build_profile_text(message.from_user.id)
+
+    await message.answer(
+        text,
+        reply_markup=profile_keyboard,
+        parse_mode="Markdown",
+    )
+
+
+@router.message(F.text == "Тарифы")
+async def reply_tariffs(message: Message):
+    await message.answer(
+        "📋 Доступные тарифы\n\n"
+        "Выберите тариф для оформления заказа:",
+        reply_markup=tariffs_keyboard(
+            action="buy",
+            back_callback="menu:main",
+        ),
+    )
+
+
+@router.message(F.text == "Поддержка")
+async def reply_support(message: Message):
+    await message.answer(
+        "🛠 Управление VPN\n\n"
+        "Для настройки вашего устройства воспользуйтесь инструкциями ниже "
+        "или обратитесь в поддержку.",
+        reply_markup=support_keyboard(),
+    )

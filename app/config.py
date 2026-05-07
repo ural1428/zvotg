@@ -37,9 +37,17 @@ class Config:
     payment_project_code: str
     payment_service_description: str
     payment_service_code: str
+    receipt_taxation: str
+    receipt_tax: str
+    receipt_payment_method: str
+    receipt_payment_object: str
 config = Config(
     bot_token=os.getenv("BOT_TOKEN"),
     bot_username=os.getenv("BOT_USERNAME"),
+    receipt_taxation=os.getenv("RECEIPT_TAXATION", "usn_income"),
+    receipt_tax=os.getenv("RECEIPT_TAX", "none"),
+    receipt_payment_method=os.getenv("RECEIPT_PAYMENT_METHOD", "full_payment"),
+    receipt_payment_object=os.getenv("RECEIPT_PAYMENT_OBJECT", "service"),
     db=DatabaseConfig(
         host=os.getenv("DB_HOST"),
         port=int(os.getenv("DB_PORT")),
@@ -72,3 +80,4 @@ config = Config(
         "maintenance_subscription",
     ),
 )
+

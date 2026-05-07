@@ -112,6 +112,11 @@ class Order(Base):
         nullable=False,
     )
 
+    customer_email: Mapped[str | None] = mapped_column(
+    String(255),
+    nullable=True,
+    )
+
     reminders_sent: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     last_reminder_at: Mapped[datetime | None] = mapped_column(

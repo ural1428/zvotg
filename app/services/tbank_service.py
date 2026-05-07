@@ -66,6 +66,7 @@ async def init_tbank_payment(order: Order) -> dict:
             "service": config.payment_service_code,
             "project": config.payment_project_code,
         },
+        "Receipt": build_receipt(order),
     }
 
     payload["Token"] = generate_tbank_token(payload)
@@ -83,6 +84,30 @@ async def init_tbank_payment(order: Order) -> dict:
 
     return data
 
+def build_receipt(order: Order) -> dict:
+    if not order.customer_email:
+        raise ValueError("customer_email is required for receipt")
+
+    amount_kopecks = int(order.amount) * 100
+    tariff = TARIFFS[order.tariff_code]
+
+    item_name = f"{config.payment_service_description}: {tariff['title']}"
+
+    return {
+        "Email": order.customer_email,
+        "Taxation": config.receipt_taxation,
+        "Items": [
+            {
+                "Name": item_name,
+                "Price": amount_kopecks,
+                "Quantity": 1,
+                "Amount": amount_kopecks,
+                "PaymentMethod": config.receipt_payment_method,
+                "PaymentObject": config.receipt_payment_object,
+                "Tax": config.receipt_tax,
+            }
+        ],
+    }
 
 def verify_tbank_notification(data: dict[str, Any]) -> bool:
     received_token = data.get("Token")

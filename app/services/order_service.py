@@ -32,6 +32,7 @@ async def create_order(
     action: str,
     subscription_id: int | None = None,
     cer_id: str | None = None,
+    customer_email: str | None = None,
 ) -> Order:
     if tariff_code not in TARIFFS:
         raise ValueError(f"Unknown tariff_code: {tariff_code}")
@@ -58,6 +59,7 @@ async def create_order(
         action=action,
         subscription_id=subscription_id,
         cer_id=cer_id,
+        customer_email=customer_email,
     )
 
     session.add(order)

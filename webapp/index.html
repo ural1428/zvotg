@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ru">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>MyMayak</title>
+
+		<script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+		<link rel="stylesheet" href="./style.css" />
+	</head>
+	<body>
+		<main class="app">
+			<header class="bot-header">
+				<div class="bot-avatar">
+					<img src="./assets/avatar.png" alt="Bot avatar" />
+				</div>
+
+				<div class="bot-title">
+					ZVO Connect
+				</div>
+			</header>
+			<section class="card subscription-card">
+				<div class="card-top">
+					<div class="card-label">Текущая подписка</div>
+					<div class="status-dot" id="statusDot"></div>
+				</div>
+				<div class="subscription-status">
+					<div>
+						<h2 id="subscriptionTitle">Загрузка...</h2>
+						<p id="subscriptionText">Получаем данные профиля</p>
+					</div>
+
+					<div class="days-badge" id="daysBadge">
+						—
+					</div>
+				</div>
+
+				<button class="primary-button" type="button" id="primaryAction">
+					Купить подписку
+				</button>
+			</section>
+
+			<section class="section hidden" id="subscriptionsSection">
+				<div class="section-title">
+					<h3>Мои подписки</h3>
+					<span id="subscriptionsCount">0</span>
+				</div>
+
+				<div class="subscription-list" id="subscriptionsList"></div>
+			</section>
+
+			<section class="section">
+				<div class="section-title">
+					<h3>Тарифы</h3>
+					<span>Выберите срок</span>
+				</div>
+
+				<div class="tariff-grid" id="tariffGrid"></div>
+			</section>
+
+			<section class="section hidden" id="renewSection">
+				<div class="section-title">
+					<h3>Выберите подписку</h3>
+					<span>для продления</span>
+				</div>
+
+				<div class="action-list" id="renewList"></div>
+
+				<button class="secondary-button" type="button" id="cancelRenewSelect">
+					Отменить
+				</button>
+			</section>
+
+			<section class="section hidden" id="emailSection">
+				<div class="section-title">
+					<h3>Email для чека</h3>
+					<span id="emailTariffTitle">Тариф</span>
+				</div>
+
+				<div class="email-card">
+					<label class="input-label" for="emailInput">
+						Введите email
+					</label>
+
+					<input
+						id="emailInput"
+						class="email-input"
+						type="email"
+						placeholder="user@example.com"
+						autocomplete="email"
+        />
+
+					<p class="input-hint">
+						На этот email будет отправлен электронный чек.
+					</p>
+
+					<button class="primary-button" type="button" id="payButton">
+						Перейти к оплате
+					</button>
+
+					<button class="secondary-button" type="button" id="cancelEmailButton">
+						Назад
+					</button>
+				</div>
+			</section>
+
+			<section class="section">
+				<div class="section-title">
+					<h3>Быстрые действия</h3>
+				</div>
+
+				<div class="action-list">
+					<button class="action-row" type="button" data-action="profile">
+						<span>Профиль</span>
+						<span class="arrow">›</span>
+					</button>
+
+					<button class="action-row" type="button" data-action="android">
+						<span>Инструкция Android</span>
+						<span class="arrow">›</span>
+					</button>
+
+					<button class="action-row" type="button" data-action="ios">
+						<span>Инструкция iOS</span>
+						<span class="arrow">›</span>
+					</button>
+
+					<button class="action-row" type="button" data-action="support">
+						<span>Поддержка</span>
+						<span class="arrow">›</span>
+					</button>
+				</div>
+			</section>
+		</main>
+
+		<script src="./app.js"></script>
+	</body>
+</html>

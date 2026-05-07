@@ -1,16 +1,38 @@
+import re
 from aiohttp import web
 from aiogram import Bot
+from sqlalchemy import select
 
 from app.config import config
+from app.database.models import User
 from app.database.session import AsyncSessionLocal
-from app.services.order_service import get_order_by_id, mark_order_paid
-from app.services.referral_service import reward_referrer_for_paid_user
+from app.integrations.mikrotik.manager import MikroTikManager
+from app.services.order_service import (
+    create_order,
+    get_order_by_id,
+    mark_order_paid,
+    attach_payment_to_order,
+)
 from app.services.subscription_service import (
     activate_or_extend_subscription,
     get_subscription_by_cer_id,
+    get_user_subscriptions,
+    get_subscription_days_left,
+    is_subscription_active,
+    create_new_pending_subscription,
+    mark_cert_created,
     send_certificate,
 )
-from app.services.tbank_service import verify_tbank_notification
+from app.services.referral_service import reward_referrer_for_paid_user
+from app.services.tariffs import TARIFFS
+from app.services.tbank_service import (
+    init_tbank_payment,
+    verify_tbank_notification,
+)
+from app.services.webapp_auth import (
+    validate_telegram_init_data,
+    WebAppAuthError,
+)
 
 
 async def handle_successful_payment(bot: Bot, order_id: int):
@@ -338,6 +360,341 @@ async def payment_fail(request: web.Request):
         content_type="text/html",
     )
 
+VISIBLE_SUBSCRIPTION_STATUSES = ("paid", "sent", "expired")
+
+EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
+
+
+def is_valid_email(email: str) -> bool:
+    return bool(EMAIL_RE.match(email.strip()))
+
+
+def get_init_data_from_request(request: web.Request) -> str:
+    return request.headers.get("X-Telegram-Init-Data", "")
+
+
+def visible_subscriptions(subscriptions):
+    return [
+        subscription
+        for subscription in subscriptions
+        if subscription.status in VISIBLE_SUBSCRIPTION_STATUSES
+    ]
+
+
+async def get_webapp_user(request: web.Request) -> dict:
+    init_data = get_init_data_from_request(request)
+    return validate_telegram_init_data(init_data)
+
+
+async def webapp_profile(request: web.Request):
+    try:
+        auth = await get_webapp_user(request)
+    except WebAppAuthError as error:
+        return web.json_response(
+            {"ok": False, "error": str(error)},
+            status=401,
+        )
+
+    telegram_id = auth["telegram_id"]
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            return web.json_response(
+                {
+                    "ok": False,
+                    "error": "user_not_found",
+                    "message": "Сначала нажмите /start в боте.",
+                },
+                status=404,
+            )
+
+        subscriptions = await get_user_subscriptions(
+            session=session,
+            telegram_id=telegram_id,
+        )
+
+    subscriptions = visible_subscriptions(subscriptions)
+
+    active_count = 0
+    max_days_left = 0
+    subscription_items = []
+
+    for index, subscription in enumerate(subscriptions, start=1):
+        active = is_subscription_active(subscription)
+        days_left = get_subscription_days_left(subscription)
+
+        if active:
+            active_count += 1
+            max_days_left = max(max_days_left, days_left)
+
+        subscription_items.append(
+            {
+                "id": subscription.id,
+                "index": index,
+                "cer_id": subscription.cer_id,
+                "status": subscription.status,
+                "is_active": active,
+                "days_left": days_left,
+                "expires_at": (
+                    subscription.expires_at.isoformat()
+                    if subscription.expires_at
+                    else None
+                ),
+            }
+        )
+
+    return web.json_response(
+        {
+            "ok": True,
+            "user": {
+                "telegram_id": telegram_id,
+                "first_name": auth["user"].get("first_name"),
+                "username": auth["user"].get("username"),
+            },
+            "profile": {
+                "active_count": active_count,
+                "total_count": len(subscriptions),
+                "max_days_left": max_days_left,
+            },
+            "subscriptions": subscription_items,
+        }
+    )
+
+
+async def webapp_tariffs(request: web.Request):
+    try:
+        await get_webapp_user(request)
+    except WebAppAuthError as error:
+        return web.json_response(
+            {"ok": False, "error": str(error)},
+            status=401,
+        )
+
+    tariffs = []
+
+    for code, tariff in TARIFFS.items():
+        tariffs.append(
+            {
+                "code": code,
+                "title": tariff["title"],
+                "days": tariff["days"],
+                "amount": tariff["amount"],
+            }
+        )
+
+    return web.json_response(
+        {
+            "ok": True,
+            "tariffs": tariffs,
+        }
+    )
+
+async def webapp_create_order(request: web.Request):
+    try:
+        auth = await get_webapp_user(request)
+    except WebAppAuthError as error:
+        return web.json_response(
+            {"ok": False, "error": str(error)},
+            status=401,
+        )
+
+    telegram_id = auth["telegram_id"]
+
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response(
+            {"ok": False, "error": "invalid_json"},
+            status=400,
+        )
+
+    tariff_code = payload.get("tariff_code")
+    action = payload.get("action", "buy")
+    cer_id = payload.get("cer_id")
+    customer_email = str(payload.get("email", "")).strip().lower()
+
+    if tariff_code not in TARIFFS:
+        return web.json_response(
+            {"ok": False, "error": "unknown_tariff"},
+            status=400,
+        )
+
+    if action not in ("buy", "renew"):
+        return web.json_response(
+            {"ok": False, "error": "unknown_action"},
+            status=400,
+        )
+
+    if not is_valid_email(customer_email):
+        return web.json_response(
+            {
+                "ok": False,
+                "error": "invalid_email",
+                "message": "Введите корректный email для отправки чека.",
+            },
+            status=400,
+        )
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            return web.json_response(
+                {
+                    "ok": False,
+                    "error": "user_not_found",
+                    "message": "Сначала нажмите /start в боте.",
+                },
+                status=404,
+            )
+
+        if action == "buy":
+            subscriptions = await get_user_subscriptions(
+                session=session,
+                telegram_id=telegram_id,
+            )
+
+            if len(visible_subscriptions(subscriptions)) >= 5:
+                return web.json_response(
+                    {
+                        "ok": False,
+                        "error": "subscriptions_limit",
+                        "message": "У вас уже максимальное количество подписок: 5.",
+                    },
+                    status=400,
+                )
+
+            try:
+                subscription = await create_new_pending_subscription(
+                    session=session,
+                    user_id=user.id,
+                    telegram_id=telegram_id,
+                )
+            except ValueError:
+                return web.json_response(
+                    {
+                        "ok": False,
+                        "error": "subscriptions_limit",
+                        "message": "У вас уже есть 5 созданных подписок.",
+                    },
+                    status=400,
+                )
+
+            order = await create_order(
+                session=session,
+                telegram_id=telegram_id,
+                tariff_code=tariff_code,
+                action="buy",
+                subscription_id=subscription.id,
+                cer_id=subscription.cer_id,
+                customer_email=customer_email,
+            )
+
+            try:
+                manager = MikroTikManager(config.mikrotik)
+                cert_path = await manager.certs.create_cert(subscription.cer_id)
+
+                subscription = await mark_cert_created(
+                    session=session,
+                    cer_id=subscription.cer_id,
+                    cert_path=cert_path,
+                )
+            except Exception as error:
+                return web.json_response(
+                    {
+                        "ok": False,
+                        "error": "certificate_create_failed",
+                        "message": "Не удалось подготовить данные для подключения.",
+                        "details": str(error),
+                    },
+                    status=500,
+                )
+
+        else:
+            subscription = await get_subscription_by_cer_id(
+                session=session,
+                cer_id=cer_id,
+            )
+
+            if (
+                not subscription
+                or subscription.telegram_id != telegram_id
+                or subscription.status not in VISIBLE_SUBSCRIPTION_STATUSES
+            ):
+                return web.json_response(
+                    {
+                        "ok": False,
+                        "error": "subscription_not_found",
+                        "message": "Подписка для продления не найдена.",
+                    },
+                    status=404,
+                )
+
+            order = await create_order(
+                session=session,
+                telegram_id=telegram_id,
+                tariff_code=tariff_code,
+                action="renew",
+                subscription_id=subscription.id,
+                cer_id=subscription.cer_id,
+                customer_email=customer_email,
+            )
+
+        try:
+            payment_data = await init_tbank_payment(order)
+        except Exception as error:
+            return web.json_response(
+                {
+                    "ok": False,
+                    "error": "payment_init_failed",
+                    "message": "Не удалось создать ссылку на оплату.",
+                    "details": str(error),
+                },
+                status=500,
+            )
+
+        payment_url = payment_data.get("PaymentURL")
+
+        if not payment_url:
+            return web.json_response(
+                {
+                    "ok": False,
+                    "error": "payment_url_missing",
+                    "message": "Банк не вернул ссылку на оплату.",
+                },
+                status=500,
+            )
+
+        order = await attach_payment_to_order(
+            session=session,
+            order_id=order.id,
+            payment_id=str(payment_data.get("PaymentId")),
+            payment_url=payment_url,
+            payment_status=payment_data.get("Status"),
+        )
+
+    return web.json_response(
+        {
+            "ok": True,
+            "order": {
+                "id": order.id,
+                "public_order_id": order.public_order_id,
+                "amount": order.amount,
+                "days": order.days,
+                "tariff_code": order.tariff_code,
+                "customer_email": order.customer_email,
+            },
+            "payment_url": order.payment_url,
+        }
+    )
 
 def create_app():
     app = web.Application()
@@ -345,6 +702,10 @@ def create_app():
     app.router.add_post("/payments/tbank/webhook", tbank_webhook)
     app.router.add_get("/payments/success", payment_success)
     app.router.add_get("/payments/fail", payment_fail)
+
+    app.router.add_get("/webapp/api/profile", webapp_profile)
+    app.router.add_get("/webapp/api/tariffs", webapp_tariffs)
+    app.router.add_post("/webapp/api/orders/create", webapp_create_order)
 
     return app
 

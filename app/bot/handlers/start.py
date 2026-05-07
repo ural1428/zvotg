@@ -2,7 +2,7 @@ from aiogram import Router
 from aiogram.filters import CommandStart
 from aiogram.filters.command import CommandObject
 from aiogram.types import Message
-
+from app.bot.keyboards.reply_menu import reply_menu_keyboard
 from app.bot.keyboards.main_menu import main_menu_keyboard
 from app.database.session import AsyncSessionLocal
 from app.services.referral_service import (
@@ -39,6 +39,11 @@ async def start_handler(message: Message, command: CommandObject):
     )
 
     await message.answer(
+        "Панель управления включена 👇",
+        reply_markup=reply_menu_keyboard,
+    )
+
+    await message.answer(
         text,
-        reply_markup=main_menu_keyboard,
+        reply_markup=main_menu_keyboard(message.from_user.id),
     )

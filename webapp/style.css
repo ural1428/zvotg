@@ -1,0 +1,403 @@
+:root {
+    --bg: #1a2026;
+    --secondary-bg: #222a32;
+    --text: #ffffff;
+    --hint: #9ca3af;
+    --button: #229ed9;
+    --button-text: #ffffff;
+    --border: #303a45;
+    --success: #22c55e;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+button {
+    font: inherit;
+}
+
+.app {
+    width: 100%;
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 20px 16px 32px;
+}
+
+.bot-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 24px;
+    padding-top: 8px;
+}
+
+.bot-avatar {
+    width: 66px;
+    height: 66px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: #222a32;
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.bot-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.bot-title {
+    margin-top: 12px;
+    font-size: 22px;
+    line-height: 1.2;
+    font-weight: 700;
+    color: var(--text);
+    text-align: center;
+}
+.status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--success);
+}
+
+.card {
+    background: var(--secondary-bg);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 18px;
+}
+
+.card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.card-label {
+    color: var(--hint);
+    font-size: 14px;
+}
+
+.card-label {
+    color: var(--hint);
+    font-size: 14px;
+}
+
+.subscription-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.subscription-status h2 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.subscription-status p {
+    margin: 6px 0 0;
+    color: var(--hint);
+    font-size: 15px;
+}
+
+.days-badge {
+    min-width: 64px;
+    height: 64px;
+    border-radius: 7px;
+    background: #1f2933;
+    color: var(--button);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    font-weight: 700;
+    border: 1px solid var(--border);
+}
+
+.primary-button {
+    width: 100%;
+    border: 0;
+    border-radius: 7px;
+    background: var(--button);
+    color: var(--button-text);
+    padding: 15px 18px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.primary-button:active,
+.tariff-card:active,
+.action-row:active {
+    transform: scale(0.98);
+}
+
+.section {
+    margin-top: 24px;
+}
+
+.section-title {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.section-title h3 {
+    margin: 0;
+    font-size: 19px;
+    font-weight: 700;
+}
+
+.section-title span {
+    color: var(--hint);
+    font-size: 14px;
+}
+
+.tariff-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.tariff-card {
+    border: 1px solid var(--border);
+    background: var(--secondary-bg);
+    border-radius: 7px;
+    padding: 16px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.tariff-card span {
+    display: block;
+    color: var(--hint);
+    font-size: 14px;
+    margin-bottom: 8px;
+}
+
+.tariff-card b {
+    display: block;
+    font-size: 20px;
+    font-weight: 500;
+}
+
+.action-list {
+    border: 1px solid #1a2026;
+    border-radius: 7px;
+    overflow: hidden;
+    background: var(--secondary-bg);
+    font-weight: 500;
+}
+
+.action-row {
+    width: 100%;
+    border: 0;
+    border-bottom: 1px solid #1a2026;
+    background: transparent;
+    padding: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    text-align: left;
+    cursor: pointer;
+    color: var(--text);
+}
+
+.action-row:hover {
+    background: #293440;
+}
+
+.action-row:last-child {
+    border-bottom: 0;
+}
+
+.arrow {
+    color: var(--hint);
+    font-size: 24px;
+    line-height: 1;
+}
+
+.status-dot.inactive {
+    background: #ef4444;
+}
+
+.primary-button:disabled {
+    opacity: 0.7;
+    cursor: default;
+}
+
+.hidden {
+    display: none;
+}
+
+.secondary-button {
+    width: 100%;
+    margin-top: 12px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text);
+    padding: 14px 18px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.secondary-button:hover {
+    background: #293440;
+}
+
+.secondary-button:active {
+    transform: scale(0.98);
+}
+
+.subscription-choice-title {
+    display: block;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.subscription-choice-subtitle {
+    display: block;
+    margin-top: 4px;
+    font-size: 13px;
+    color: var(--hint);
+}
+
+.email-card {
+    background: var(--secondary-bg);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 18px;
+}
+
+.input-label {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--hint);
+    font-size: 14px;
+}
+
+.email-input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: #111820;
+    color: var(--text);
+    padding: 15px 16px;
+    font-size: 16px;
+    outline: none;
+}
+
+.email-input:focus {
+    border-color: var(--button);
+}
+
+.email-input::placeholder {
+    color: #6b7280;
+}
+
+.input-hint {
+    margin: 10px 0 16px;
+    color: var(--hint);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.subscription-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.subscription-item {
+    background: var(--secondary-bg);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 15px;
+}
+
+.subscription-item-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.subscription-name {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.subscription-meta {
+    margin-top: 5px;
+    font-size: 13px;
+    color: var(--hint);
+}
+
+.status-pill {
+    flex-shrink: 0;
+    border-radius: 999px;
+    padding: 5px 9px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.status-pill.active {
+    background: rgba(34, 197, 94, 0.14);
+    color: #22c55e;
+}
+
+.status-pill.inactive {
+    background: rgba(239, 68, 68, 0.14);
+    color: #ef4444;
+}
+
+.subscription-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.small-button {
+    width: 100%;
+    border: 0;
+    border-radius: 7px;
+    background: var(--button);
+    color: var(--button-text);
+    padding: 12px 14px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.small-button.secondary {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+.small-button:active {
+    transform: scale(0.98);
+}
