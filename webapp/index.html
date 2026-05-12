@@ -7,7 +7,7 @@
 
 		<script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-		<link rel="stylesheet" href="./style.css" />
+		<link rel="stylesheet" href="./style.css?v=12" />
 	</head>
 	<body>
 		<main class="app">
@@ -44,10 +44,10 @@
 			<section class="section hidden" id="subscriptionsSection">
 				<div class="section-title">
 					<h3>Мои подписки</h3>
-					<span id="subscriptionsCount">0</span>
+					<span id="subscriptionsCount">0 / 5</span>
 				</div>
 
-				<div class="subscription-list" id="subscriptionsList"></div>
+				<div class="subscriptions-list" id="subscriptionsList"></div>
 			</section>
 
 			<section class="section">
@@ -112,26 +112,190 @@
 
 				<div class="action-list">
 					<button class="action-row" type="button" data-action="profile">
-						<span>Профиль</span>
+						<span class="action-left">
+							<span class="action-icon">
+								<img src="./assets/icons/person-fill.svg" alt="" />
+							</span>
+							<span>Профиль</span>
+						</span>
 						<span class="arrow">›</span>
 					</button>
 
 					<button class="action-row" type="button" data-action="android">
-						<span>Инструкция Android</span>
+						<span class="action-left">
+							<span class="action-icon">
+								<img src="./assets/icons/android2.svg" alt="" />
+							</span>
+							<span>Инструкция Android</span>
+						</span>
 						<span class="arrow">›</span>
 					</button>
 
 					<button class="action-row" type="button" data-action="ios">
-						<span>Инструкция iOS</span>
+						<span class="action-left">
+							<span class="action-icon">
+								<img src="./assets/icons/apple.svg" alt="" />
+							</span>
+							<span>Инструкция iOS</span>
+						</span>
 						<span class="arrow">›</span>
 					</button>
 
-					<button class="action-row" type="button" data-action="support">
-						<span>Поддержка</span>
+					<button class="action-row action-row-blue" type="button" data-action="support">
+						<span class="action-left">
+							<span class="action-icon">
+								<img src="./assets/icons/chat-dots-fill.svg" alt="" />
+							</span>
+							<span>Поддержка</span>
+						</span>
 						<span class="arrow">›</span>
 					</button>
 				</div>
 			</section>
+
+			<section class="section hidden" id="profileDetailsSection">
+				<div class="section-title">
+					<h3>Профиль</h3>
+					<span>Ваши данные</span>
+				</div>
+
+				<div class="info-card" id="profileDetails"></div>
+			</section>
+
+			<section class="section hidden" id="androidSection">
+				<div class="section-title">
+					<h3>Android</h3>
+					<span>Быстрая установка</span>
+				</div>
+
+				<div class="info-card">
+					<div class="instruction-intro">
+						Установите StrongSwan, загрузите профиль из бота и импортируйте сертификат по шагам ниже.
+					</div>
+
+					<div class="screenshot-steps">
+						<article class="screenshot-step">
+							<div class="step-number">1</div>
+							<div class="step-content">
+								<h4>Установите StrongSwan</h4>
+								<p>
+									Откройте Google Play и установите приложение StrongSwan VPN Client.
+									Или скачайте <a class="text-link with-arrow" href="https://mymayak.ru/downloads/strongswan.apk" target="_blank" rel="noopener">strongSwan.apk</a> напрямую.
+								</p>
+								<a href="./assets/android/01-google-play.jpg" target="_blank">
+									<img src="./assets/android/01-google-play.jpg" alt="Установка StrongSwan" />
+								</a>
+							</div>
+						</article>
+
+						<article class="screenshot-step">
+							<div class="step-number">2</div>
+							<div class="step-content">
+								<h4>Загрузите профиль</h4>
+								<p>
+									В основном боте нажмите «Android — быстрая установка», затем «Загрузить профиль».
+								</p>
+								<a href="./assets/android/02-load-profile.jpg" target="_blank">
+									<img src="./assets/android/02-load-profile.jpg" alt="Загрузка профиля StrongSwan" />
+								</a>
+							</div>
+						</article>
+
+						<article class="screenshot-step">
+							<div class="step-number">3</div>
+							<div class="step-content">
+								<h4>Пароль сертификата</h4>
+								<p>
+									При импорте профиля введите пароль сертификата:
+									<code>123456789</code>
+								</p>
+								<a href="./assets/android/03-password.jpg" target="_blank">
+									<img src="./assets/android/03-password.jpg" alt="Ввод пароля сертификата" />
+								</a>
+							</div>
+						</article>
+
+						<article class="screenshot-step">
+							<div class="step-number">4</div>
+							<div class="step-content">
+								<h4>Выбор типа сертификата</h4>
+								<p>
+									Выберете "Сертификат VPN или приложения" и нажмите <code>ОК</code>
+								</p>
+								<a href="./assets/android/04-ok1.jpg" target="_blank">
+									<img src="./assets/android/04-ok1.jpg" alt="Подтверждение типа сертификата" />
+								</a>
+							</div>
+						</article>
+
+						<article class="screenshot-step">
+							<div class="step-number">5</div>
+							<div class="step-content">
+								<h4>Имя сертификата</h4>
+								<p>
+									Вы можете поменять имя сертификата на любое или нажмите <code>ОК</code>
+								</p>
+								<a href="./assets/android/04-ok2.jpg" target="_blank">
+									<img src="./assets/android/04-ok2.jpg" alt="Подтверждение имени профиля" />
+								</a>
+							</div>
+						</article>
+
+						<article class="screenshot-step">
+							<div class="step-number">6</div>
+							<div class="step-content">
+								<h4>Выберите сертификат</h4>
+								<p>
+									Нажмите <code>Выбрать</code>. Чек-бокс уже будет стоять на вашем сертификате.
+								</p>
+								<a href="./assets/android/05-select-cert.jpg" target="_blank">
+									<img src="./assets/android/05-select-cert.jpg" alt="Выбор сертификата" />
+								</a>
+							</div>
+						</article>
+
+						<article class="screenshot-step">
+							<div class="step-number">7</div>
+							<div class="step-content">
+								<h4>Нажмите IMPORT</h4>
+								<p>
+									В правом верхнем углу нажмите <code>IMPORT</code>. После этого профиль появится в StrongSwan.
+								</p>
+								<a href="./assets/android/06-import.jpg" target="_blank">
+									<img src="./assets/android/06-import.jpg" alt="Импорт профиля StrongSwan" />
+								</a>
+							</div>
+						</article>
+					</div>
+
+					<button class="primary-button" type="button" id="openAndroidSupport">
+						Написать в поддержку
+					</button>
+				</div>
+			</section>
+
+			<section class="section hidden" id="iosSection">
+				<div class="section-title">
+					<h3>Apple iOS</h3>
+					<span>Установка сертификатов</span>
+				</div>
+
+				<div class="info-card">
+					<ol class="instruction-list">
+						<li>Скачайте клиентский сертификат .p12 из основного бота.</li>
+						<li>Скачайте CA-сертификат.</li>
+						<li>Откройте сертификаты на iPhone и установите профиль.</li>
+						<li>Перейдите в Настройки → Основные → VPN и управление устройством.</li>
+						<li>Доверяйте CA-сертификату в настройках сертификатов.</li>
+						<li>Создайте IKEv2-подключение по инструкции из бота.</li>
+					</ol>
+
+					<button class="primary-button" type="button" id="openIosSupport">
+						Открыть поддержку
+					</button>
+				</div>
+			</section>
+			
 		</main>
 
 		<script src="./app.js"></script>

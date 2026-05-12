@@ -72,8 +72,49 @@ button {
     height: 12px;
     border-radius: 50%;
     background: var(--success);
+    box-shadow: 0 0 0 rgba(34, 197, 94, 0.6);
+    animation: pulse-green 1.4s infinite;
 }
 
+.status-dot.inactive {
+    background: #ef4444;
+    box-shadow: 0 0 0 rgba(239, 68, 68, 0.6);
+    animation: pulse-red 1.4s infinite;
+}
+
+@keyframes pulse-green {
+    0% {
+        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.6);
+        opacity: 1;
+    }
+
+    70% {
+        box-shadow: 0 0 0 8px rgba(34, 197, 94, 0);
+        opacity: 0.75;
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+        opacity: 1;
+    }
+}
+
+@keyframes pulse-red {
+    0% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6);
+        opacity: 1;
+    }
+
+    70% {
+        box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+        opacity: 0.75;
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+        opacity: 1;
+    }
+}
 .card {
     background: var(--secondary-bg);
     border: 1px solid var(--border);
@@ -185,6 +226,7 @@ button {
     padding: 16px;
     text-align: left;
     cursor: pointer;
+    color: #fff;
 }
 
 .tariff-card span {
@@ -205,7 +247,8 @@ button {
     border-radius: 7px;
     overflow: hidden;
     background: var(--secondary-bg);
-    font-weight: 500;
+    font-weight: 400;
+    font-size: 16px;
 }
 
 .action-row {
@@ -222,6 +265,10 @@ button {
     color: var(--text);
 }
 
+.action-row-blue {
+    color: #4cb2ff;
+}
+
 .action-row:hover {
     background: #293440;
 }
@@ -234,10 +281,6 @@ button {
     color: var(--hint);
     font-size: 24px;
     line-height: 1;
-}
-
-.status-dot.inactive {
-    background: #ef4444;
 }
 
 .primary-button:disabled {
@@ -400,4 +443,270 @@ button {
 
 .small-button:active {
     transform: scale(0.98);
+}
+
+.info-card {
+    background: var(--secondary-bg);
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    padding: 18px;
+}
+
+.profile-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.profile-row:last-child {
+    border-bottom: 0;
+}
+
+.profile-row span:first-child {
+    color: var(--hint);
+}
+
+.profile-row span:last-child {
+    color: var(--text);
+    font-weight: 600;
+    text-align: right;
+}
+
+.instruction-list {
+    margin: 0 0 18px;
+    padding-left: 20px;
+    color: var(--text);
+}
+
+.instruction-list li {
+    margin-bottom: 10px;
+    line-height: 1.45;
+}
+
+.instruction-list li:last-child {
+    margin-bottom: 0;
+}
+
+.subscriptions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.subscription-item {
+    background: var(--secondary-bg);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 16px;
+}
+
+.subscription-item-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.subscription-item-title {
+    font-weight: 700;
+    color: var(--text);
+}
+
+.subscription-item-status {
+    font-size: 13px;
+    color: var(--hint);
+}
+
+.subscription-item-meta {
+    color: var(--hint);
+    font-size: 14px;
+    line-height: 1.45;
+    margin-bottom: 14px;
+}
+
+.subscription-item-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.small-button {
+    flex: 1;
+    border: 0;
+    border-radius: 7px;
+    background: var(--button);
+    color: var(--button-text);
+    padding: 12px 14px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.small-button.secondary {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+.small-button:active {
+    transform: scale(0.98);
+}
+
+.days-badge.small-days {
+    min-width: 46px;
+    width: 46px;
+    height: 46px;
+    border-radius: 15px;
+    font-size: 18px;
+}
+
+.instruction-intro {
+    margin-bottom: 18px;
+    color: var(--hint);
+    font-size: 15px;
+    line-height: 1.45;
+}
+
+.screenshot-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.screenshot-step {
+    display: flex;
+    gap: 12px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.screenshot-step:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+}
+
+.step-number {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    border-radius: 50%;
+    background: #4cb2ff;
+    color: var(--button-text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.step-content {
+    flex: 1;
+}
+
+.step-content h4 {
+    margin: 2px 0 6px;
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.step-content p {
+    margin: 0 0 10px;
+    color: var(--hint);
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.step-content code {
+    background: #111820;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2px 6px;
+    font-size: 13px;
+}
+
+.step-content img {
+    display: block;
+    width: 100%;
+    max-width: 260px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: #111820;
+}
+
+.step-content a {
+    display: inline-block;
+    text-decoration: none;
+}
+
+img,
+video {
+    max-width: 100%;
+    height: auto;
+    display: block;
+}
+
+.screenshot-card {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--secondary-bg);
+    margin: 12px 0;
+}
+
+.screenshot-card img {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    object-fit: contain;
+    display: block;
+}
+
+.instruction-image {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    border-radius: 7px;
+    display: block;
+}
+
+.text-link {
+    color: #4cb2ff;
+    text-decoration: none;
+}
+
+.text-link:active {
+    opacity: 0.75;
+}
+    
+.text-link.with-arrow::after {
+    content: " ›";
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.action-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.action-icon {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.action-icon img {
+    width: 18px;
+    height: 18px;
+    filter: brightness(0) invert(1);
 }

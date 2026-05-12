@@ -1,11 +1,12 @@
 const tg = window.Telegram?.WebApp;
+const SUPPORT_BOT_URL = "https://t.me/zvotg_supportbot";
 
 const state = {
     profile: null,
     tariffs: [],
     selectedTariff: null,
     pendingOrder: null,
-    forcedRenewCerId: null,
+    selectedRenewCerId: null,
 };
 
 if (tg) {
@@ -22,6 +23,94 @@ function showAlert(message) {
         tg.showAlert(message);
     } else {
         alert(message);
+    }
+}
+
+function hideInfoSections() {
+    document.getElementById("profileDetailsSection").classList.add("hidden");
+    document.getElementById("androidSection").classList.add("hidden");
+    document.getElementById("iosSection").classList.add("hidden");
+}
+
+function showProfileDetails() {
+    hideInfoSections();
+
+    const section = document.getElementById("profileDetailsSection");
+    const container = document.getElementById("profileDetails");
+
+    const profile = state.profile;
+
+    if (!profile) {
+        showAlert("Профиль ещё не загружен.");
+        return;
+    }
+
+    const activeCount = profile.profile.active_count;
+    const totalCount = profile.profile.total_count;
+    const maxDaysLeft = profile.profile.max_days_left;
+    const username = profile.user.username ? `@${profile.user.username}` : "—";
+
+    container.innerHTML = `
+        <div class="profile-row">
+            <span>Telegram ID</span>
+            <span>${profile.user.telegram_id}</span>
+        </div>
+
+        <div class="profile-row">
+            <span>Username</span>
+            <span>${username}</span>
+        </div>
+
+        <div class="profile-row">
+            <span>Активных подписок</span>
+            <span>${activeCount}</span>
+        </div>
+
+        <div class="profile-row">
+            <span>Всего подписок</span>
+            <span>${totalCount} / 5</span>
+        </div>
+
+        <div class="profile-row">
+            <span>Максимально осталось</span>
+            <span>${maxDaysLeft} дн.</span>
+        </div>
+    `;
+
+    section.classList.remove("hidden");
+    section.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+    });
+}
+
+function showAndroidInstruction() {
+    hideInfoSections();
+
+    const section = document.getElementById("androidSection");
+    section.classList.remove("hidden");
+    section.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+    });
+}
+
+function showIosInstruction() {
+    hideInfoSections();
+
+    const section = document.getElementById("iosSection");
+    section.classList.remove("hidden");
+    section.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+    });
+}
+
+function openSupportBot() {
+    if (tg) {
+        tg.openTelegramLink(SUPPORT_BOT_URL);
+    } else {
+        window.location.href = SUPPORT_BOT_URL;
     }
 }
 
@@ -412,14 +501,31 @@ function bindActions() {
                 return;
             }
 
-            if (action === "support") {
-                showAlert("Поддержка пока доступна в основном боте.");
+            if (action === "profile") {
+                showProfileDetails();
                 return;
             }
 
-            showAlert("Скоро здесь появится раздел.");
+            if (action === "android") {
+                showAndroidInstruction();
+                return;
+            }
+
+            if (action === "ios") {
+                showIosInstruction();
+                return;
+            }
+
+            if (action === "support") {
+                openSupportBot();
+                return;
+            }
         });
     });
+
+    document.getElementById("openAndroidSupport").addEventListener("click", openSupportBot);
+    document.getElementById("openIosSupport").addEventListener("click", openSupportBot);
+
 }
 
 async function bootstrap() {
