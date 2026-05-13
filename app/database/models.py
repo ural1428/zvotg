@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -18,6 +18,34 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     subscription_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    vk_peer_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        unique=True,
+        nullable=True,
+    )
+
+    primary_platform: Mapped[str | None] = mapped_column(
+        String(16),
+        nullable=True,
+    )
+
+    primary_external_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+    )
+
+    is_merged: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+
+    merged_into_user_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=True,
+    )
 class VPNSubscription(Base):
     __tablename__ = "vpn_subscriptions"
 
@@ -29,12 +57,11 @@ class VPNSubscription(Base):
         index=True,
     )
 
-    telegram_id: Mapped[int] = mapped_column(
+    telegram_id: Mapped[int | None] = mapped_column(
         BigInteger,
-        nullable=False,
-        index=True,
+        unique=True,
+        nullable=True,
     )
-
     cer_id: Mapped[str] = mapped_column(
         String(64),
         nullable=False,
@@ -91,13 +118,23 @@ class VPNSubscription(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+
+    owner_platform: Mapped[str | None] = mapped_column(
+        String(16),
+        nullable=True,
+    )
+
+    owner_external_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+    )
 class Order(Base):
     __tablename__ = "orders"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
     user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    telegram_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, nullable=True, index=True)
 
     tariff_code: Mapped[str] = mapped_column(String(20), nullable=False)
     days: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -163,6 +200,16 @@ class Order(Base):
     String(255),
     nullable=True,
     )
+
+    owner_platform: Mapped[str | None] = mapped_column(
+        String(16),
+        nullable=True,
+    )
+
+    owner_external_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+    )
 class Referral(Base):
     __tablename__ = "referrals"
 
@@ -200,6 +247,111 @@ class Referral(Base):
     )
 
     rewarded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+class AccountLinkCode(Base):
+    __tablename__ = "account_link_codes"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    code: Mapped[str] = mapped_column(
+        String(16),
+        unique=True,
+        nullable=False,
+    )
+
+    source_user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    source_platform: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+    )
+
+    source_external_id: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+    )
+
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+    used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+    )
+
+class AccountMergeRequest(Base):
+    __tablename__ = "account_merge_requests"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    source_user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    target_user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    link_code_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("account_link_codes.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    target_platform: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+    )
+
+    target_external_id: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="pending",
+        server_default="pending",
+    )
+
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+    )
+
+    decided_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )

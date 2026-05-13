@@ -53,12 +53,14 @@ async def init_tbank_payment(order: Order) -> dict:
         "Amount": amount_kopecks,
         "OrderId": f"{config.payment_project_code}-{order.id}-{public_order_id}",
         "Description": f"{config.payment_service_description}: {tariff['title']}",
-        "CustomerKey": str(order.telegram_id),
+        "CustomerKey": get_order_customer_key(order),
         "NotificationURL": f"{config.public_webhook_base_url}/payments/tbank/webhook",
         "SuccessURL": f"{config.public_webhook_base_url}/payments/success",
         "FailURL": f"{config.public_webhook_base_url}/payments/fail",
         "DATA": {
-            "telegram_id": str(order.telegram_id),
+            "telegram_id": str(order.telegram_id or ""),
+            "owner_platform": order.owner_platform or "tg",
+            "owner_external_id": str(order.owner_external_id or order.telegram_id or ""),
             "order_id": str(order.id),
             "public_order_id": str(public_order_id),
             "action": order.action,
@@ -108,6 +110,12 @@ def build_receipt(order: Order) -> dict:
             }
         ],
     }
+
+def get_order_customer_key(order: Order) -> str:
+    if order.owner_platform and order.owner_external_id:
+        return f"{order.owner_platform}:{order.owner_external_id}"
+
+    return f"tg:{order.telegram_id}"
 
 def verify_tbank_notification(data: dict[str, Any]) -> bool:
     received_token = data.get("Token")

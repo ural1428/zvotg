@@ -33,7 +33,7 @@ from app.services.webapp_auth import (
     validate_telegram_init_data,
     WebAppAuthError,
 )
-
+from app.services.vk_notify_service import send_vk_message
 
 async def handle_successful_payment(bot: Bot, order_id: int):
     async with AsyncSessionLocal() as session:
@@ -67,10 +67,39 @@ async def handle_successful_payment(bot: Bot, order_id: int):
             tariff_code=order.tariff_code,
         )
 
-        await reward_referrer_for_paid_user(
-            session=session,
-            referred_telegram_id=order.telegram_id,
-        )
+        if order.telegram_id:
+            await reward_referrer_for_paid_user(
+                session=session,
+                referred_telegram_id=order.telegram_id,
+            )
+
+        if order.owner_platform == "vk":
+            vk_peer_id = order.owner_external_id
+
+            if not vk_peer_id:
+                return
+
+            if order.action == "buy":
+                await send_vk_message(
+                    peer_id=vk_peer_id,
+                    message=(
+                        "✅ Оплата прошла успешно!\n\n"
+                        "Подписка активирована.\n"
+                        "Теперь вы можете открыть профиль в VK-боте и проверить срок действия."
+                    ),
+                )
+
+            elif order.action == "renew":
+                await send_vk_message(
+                    peer_id=vk_peer_id,
+                    message=(
+                        "✅ Оплата прошла успешно!\n\n"
+                        "Подписка продлена.\n"
+                        "Ваш профиль подключения остаётся прежним."
+                    ),
+                )
+
+            return
 
         if order.action == "buy":
             await send_certificate(
@@ -96,7 +125,6 @@ async def handle_successful_payment(bot: Bot, order_id: int):
                     "Подписка продлена. Ваш сертификат остаётся прежним."
                 ),
             )
-
 
 def parse_order_id(order_id_raw: str) -> int | None:
     prefix = f"{config.payment_project_code}-"
